@@ -1,148 +1,131 @@
 import os
 import json
-import requests
-from flask import current_app
+import zipfile
+import tempfile
+import shapefile  # pyshp
 
-# URL source : GeoSenegal portail officiel
-OCSOL_BASE_URL = 'https://www.geosenegal.gouv.sn'
-OCSOL_DOWNLOAD_PAGE = f'{OCSOL_BASE_URL}/-donnees-vectorielles-d-occupation-du-sol-.html'
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
 
-# Couches OCSOL référencées sur GeoSenegal
-OCSOL_COUCHES = [
-    {
-        'id': 'ocsol_2015',
-        'label': 'Occupation du Sol 2015',
-        'annee': 2015,
-        'source': 'DTGC / GeoSenegal',
-        'description': 'Carte d\'occupation et d\'utilisation des sols du Sénégal — année 2015',
-        'url_page': OCSOL_DOWNLOAD_PAGE,
-        'telecharger': True,
-    },
-    {
-        'id': 'ocsol_2010',
-        'label': 'Occupation du Sol 2010',
-        'annee': 2010,
-        'source': 'DTGC / GeoSenegal',
-        'description': 'Carte d\'occupation et d\'utilisation des sols du Sénégal — année 2010',
-        'url_page': OCSOL_DOWNLOAD_PAGE,
-        'telecharger': True,
-    },
-    {
-        'id': 'ocsol_1990',
-        'label': 'Occupation du Sol 1990',
-        'annee': 1990,
-        'source': 'DTGC / GeoSenegal',
-        'description': 'Carte d\'occupation et d\'utilisation des sols du Sénégal — année 1990',
-        'url_page': OCSOL_DOWNLOAD_PAGE,
-        'telecharger': True,
-    },
+CATA_OCSOL = [
+    {'annee': 1990, 'disponible': False, 'source': 'GeoS\u00e9n\u00e9gal',
+     'url': 'https://www.geosenegal.gouv.sn/-donnees-vectorielles-d-occupation-du-sol-.html'},
+    {'annee': 2010, 'disponible': False, 'source': 'GeoS\u00e9n\u00e9gal',
+     'url': 'https://www.geosenegal.gouv.sn/-donnees-vectorielles-d-occupation-du-sol-.html'},
+    {'annee': 2015, 'disponible': False, 'source': 'GeoS\u00e9n\u00e9gal',
+     'url': 'https://www.geosenegal.gouv.sn/-donnees-vectorielles-d-occupation-du-sol-.html'},
 ]
 
-# Classes OCSOL typiques pour légende automatique
-CLASSES_OCSOL = {
-    1:  {'label': 'Terres cultivées',         'couleur': '#f9e79f'},
-    2:  {'label': 'Forêts et savanes',          'couleur': '#27ae60'},
-    3:  {'label': 'Zones arbustives',            'couleur': '#82e0aa'},
-    4:  {'label': 'Steppes et prairies',         'couleur': '#d5f5e3'},
-    5:  {'label': 'Zones humides',               'couleur': '#85c1e9'},
-    6:  {'label': 'Plans d\'eau',               'couleur': '#3498db'},
-    7:  {'label': 'Zones bâties',               'couleur': '#e74c3c'},
-    8:  {'label': 'Sols nus et zones sableuses','couleur': '#f0e68c'},
-    9:  {'label': 'Mangroves',                  'couleur': '#117a65'},
-    10: {'label': 'Riziculture',                'couleur': '#a9cce3'},
+LEGENDE_OCSOL = {
+    '1': {'label': 'Terres cultiv\u00e9es', 'couleur': '#f9e79f'},
+    '2': {'label': 'Prairie / Savane',    'couleur': '#abebc6'},
+    '3': {'label': 'For\u00eat',           'couleur': '#27ae60'},
+    '4': {'label': 'Zone humide',         'couleur': '#85c1e9'},
+    '5': {'label': 'Plan d\'eau',        'couleur': '#2e86c1'},
+    '6': {'label': 'Zone b\u00e2tie',     'couleur': '#e74c3c'},
+    '7': {'label': 'Sol nu / Sable',      'couleur': '#f0e68c'},
+    '8': {'label': 'Autre',               'couleur': '#bdc3c7'},
 }
 
 
 def get_catalogue_ocsol():
-    """Retourne le catalogue des couches OCSOL disponibles en téléchargement."""
+    for entry in CATA_OCSOL:
+        local = os.path.join(DATA_DIR, f"ocsol_{entry['annee']}.shp")
+        entry['disponible'] = os.path.exists(local)
     return {
-        'source': 'GeoSenegal DTGC',
-        'url_source': OCSOL_DOWNLOAD_PAGE,
-        'note': 'Ces données sont téléchargeables directement depuis GeoSenegal '
-                'et peuvent être importées dans Carto-facileSN via /api/donnees/importer.',
-        'couches': OCSOL_COUCHES,
-        'classes_ocsol': CLASSES_OCSOL,
-        'formats_disponibles': ['Shapefile (.zip)', 'GeoJSON'],
-        'projection': 'WGS84 (EPSG:4326)',
-        'couverture': 'Sénégal entier',
+        'annees': CATA_OCSOL,
+        'legende': LEGENDE_OCSOL,
+        'source_url': 'https://www.geosenegal.gouv.sn/-donnees-vectorielles-d-occupation-du-sol-.html'
     }
 
 
-def charger_ocsol_pour_commune(commune_geom_json, fichier_ocsol_path, annee=None):
-    """
-    Charge et découpe un fichier OCSOL (SHP ou GeoJSON) à l'emprise d'une commune.
-    L'utilisateur fournit son propre fichier OCSOL téléchargé depuis GeoSenegal.
+def _bbox_commune(commune_geom_json):
+    geom = json.loads(commune_geom_json) if isinstance(commune_geom_json, str) else commune_geom_json
+    t = geom.get('type', '')
+    coords = []
+    if t == 'Polygon':
+        coords = geom['coordinates'][0]
+    elif t == 'MultiPolygon':
+        for poly in geom['coordinates']:
+            coords += poly[0] if poly else []
+    if not coords:
+        return -180, -90, 180, 90
+    xs, ys = [c[0] for c in coords], [c[1] for c in coords]
+    return min(xs), min(ys), max(xs), max(ys)
 
-    commune_geom_json  : string GeoJSON de la commune
-    fichier_ocsol_path : chemin local vers le fichier OCSOL
-    annee              : année pour métadonnées
-    Retourne : dict GeoJSON FeatureCollection + légende
-    """
-    import geopandas as gpd
-    from shapely.geometry import shape
 
+def _lire_ocsol_shp(shp_path, minx, miny, maxx, maxy):
+    features = []
     try:
-        commune_geom = shape(json.loads(commune_geom_json))
-        bounds = commune_geom.bounds
+        sf = shapefile.Reader(shp_path)
+        fields = [f[0] for f in sf.fields[1:]]
+        col_classe = next((f for f in fields if f.upper() in ('CLASSE', 'CODE', 'CLASS', 'TYPE')), fields[0] if fields else None)
+        for sr in sf.shapeRecords():
+            geom = sr.shape.__geo_interface__
+            attrs = {}
+            for k, v in zip(fields, sr.record):
+                if isinstance(v, bytes):
+                    v = v.decode('utf-8', errors='replace')
+                attrs[k] = str(v).strip() if v is not None else ''
+            classe = attrs.get(col_classe, '8') if col_classe else '8'
+            leg = LEGENDE_OCSOL.get(str(classe), LEGENDE_OCSOL['8'])
+            attrs['_label'] = leg['label']
+            attrs['_couleur'] = leg['couleur']
+            features.append({'type': 'Feature', 'geometry': geom, 'properties': attrs})
+    except Exception as e:
+        pass
+    return features
 
-        if fichier_ocsol_path.endswith('.shp'):
-            from shapely.geometry import box
-            gdf = gpd.read_file(
-                fichier_ocsol_path,
-                bbox=(bounds[0]-0.01, bounds[1]-0.01, bounds[2]+0.01, bounds[3]+0.01)
-            )
+
+def appliquer_ocsol_local(annee, commune_geom_json):
+    shp_path = os.path.join(DATA_DIR, f'ocsol_{annee}.shp')
+    if not os.path.exists(shp_path):
+        return {'erreur': f'OCSOL {annee} non disponible localement'}
+    minx, miny, maxx, maxy = _bbox_commune(commune_geom_json)
+    features = _lire_ocsol_shp(shp_path, minx, miny, maxx, maxy)
+    return {
+        'type': 'FeatureCollection',
+        'features': features,
+        'annee': annee,
+        'nb_entites': len(features),
+        'legende': LEGENDE_OCSOL
+    }
+
+
+def traiter_upload_ocsol(fichier_zip_ou_shp, annee, commune_geom_json):
+    """Traite un fichier OCSOL upload\u00e9 par l'utilisateur (ZIP ou SHP)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        if fichier_zip_ou_shp.filename.endswith('.zip'):
+            zip_path = os.path.join(tmpdir, 'ocsol.zip')
+            fichier_zip_ou_shp.save(zip_path)
+            with zipfile.ZipFile(zip_path, 'r') as z:
+                z.extractall(tmpdir)
+            shp_files = [f for f in os.listdir(tmpdir) if f.endswith('.shp')]
+            if not shp_files:
+                return {'erreur': 'Aucun .shp trouv\u00e9 dans le ZIP'}
+            shp_path = os.path.join(tmpdir, shp_files[0])
         else:
-            gdf = gpd.read_file(fichier_ocsol_path)
+            shp_path = os.path.join(tmpdir, 'ocsol.shp')
+            fichier_zip_ou_shp.save(shp_path)
 
-        if gdf.crs and gdf.crs.to_epsg() != 4326:
-            gdf = gdf.to_crs(epsg=4326)
+        minx, miny, maxx, maxy = _bbox_commune(commune_geom_json)
+        features = _lire_ocsol_shp(shp_path, minx, miny, maxx, maxy)
 
-        gdf_commune = gdf[gdf.geometry.intersects(commune_geom)]
-
-        if gdf_commune.empty:
-            return {'type': 'FeatureCollection', 'features': [],
-                    'meta': {'annee': annee, 'nb_entites': 0}}
-
-        gdf_commune = gdf_commune.copy()
-        gdf_commune['geometry'] = gdf_commune['geometry'].simplify(0.0005, preserve_topology=True)
-
-        col_classe = _detecter_col_ocsol(gdf_commune)
-        features = json.loads(gdf_commune.to_json())['features']
-        legende = _construire_legende(gdf_commune, col_classe)
+        # Sauvegarder localement pour r\u00e9utilisation
+        dest = os.path.join(DATA_DIR, f'ocsol_{annee}_uploaded')
+        try:
+            import shutil
+            shutil.copy(shp_path, dest + '.shp')
+            for ext in ['.dbf', '.prj', '.shx']:
+                src = shp_path.replace('.shp', ext)
+                if os.path.exists(src):
+                    shutil.copy(src, dest + ext)
+        except Exception:
+            pass
 
         return {
             'type': 'FeatureCollection',
             'features': features,
-            'meta': {
-                'annee': annee,
-                'nb_entites': len(features),
-                'source': 'GeoSenegal / DTGC',
-                'colonne_classe': col_classe,
-            },
-            'legende': legende
+            'annee': annee,
+            'nb_entites': len(features),
+            'legende': LEGENDE_OCSOL
         }
-    except Exception as e:
-        return {'type': 'FeatureCollection', 'features': [], 'erreur': str(e)}
-
-
-def _detecter_col_ocsol(gdf):
-    candidats = ['CLASSE', 'CODE_OCS', 'CODE', 'OCSOL', 'LIBELLE', 'TYPE']
-    for c in candidats:
-        if c in [col.upper() for col in gdf.columns]:
-            return next(col for col in gdf.columns if col.upper() == c)
-    return None
-
-
-def _construire_legende(gdf, col_classe):
-    if not col_classe:
-        return []
-    valeurs = gdf[col_classe].unique()
-    legende = []
-    for v in sorted(valeurs):
-        try:
-            code = int(v)
-            info = CLASSES_OCSOL.get(code, {'label': str(v), 'couleur': '#cccccc'})
-        except (ValueError, TypeError):
-            info = {'label': str(v), 'couleur': '#cccccc'}
-        legende.append({'valeur': str(v), 'label': info['label'], 'couleur': info['couleur']})
-    return legende
