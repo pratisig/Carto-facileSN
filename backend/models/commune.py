@@ -1,11 +1,12 @@
-from app import db
+from extensions import db
+
 
 class Region(db.Model):
     __tablename__ = 'regions'
     id = db.Column(db.Integer, primary_key=True)
     nom = db.Column(db.String(100), nullable=False, unique=True)
-    code = db.Column(db.String(10), unique=True)
-    geom = db.Column(db.Text)  # GeoJSON stocké en texte (ou utiliser PostGIS geometry)
+    code = db.Column(db.String(10))
+    geom = db.Column(db.Text)
     departements = db.relationship('Departement', backref='region', lazy=True)
 
     def to_dict(self):
@@ -29,11 +30,11 @@ class Commune(db.Model):
     __tablename__ = 'communes'
     id = db.Column(db.Integer, primary_key=True)
     nom = db.Column(db.String(150), nullable=False)
-    code = db.Column(db.String(15), unique=True)
+    code = db.Column(db.String(15))
     departement_id = db.Column(db.Integer, db.ForeignKey('departements.id'), nullable=False)
     population = db.Column(db.Integer)
     superficie_km2 = db.Column(db.Float)
-    geom = db.Column(db.Text)  # GeoJSON
+    geom = db.Column(db.Text)
     cartes = db.relationship('Carte', backref='commune', lazy=True)
 
     def to_dict(self):

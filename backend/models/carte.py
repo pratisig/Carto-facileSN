@@ -1,4 +1,4 @@
-from app import db
+from extensions import db
 from datetime import datetime
 
 
@@ -16,7 +16,7 @@ class Carte(db.Model):
     afficher_localites = db.Column(db.Boolean, default=True)
     couches_supplementaires = db.Column(db.JSON)
     donnees_import = db.Column(db.JSON)
-    statut_export = db.Column(db.String(20), default='brouillon')  # brouillon | paye | exporte
+    statut_export = db.Column(db.String(20), default='brouillon')
     fichier_png = db.Column(db.String(300))
     fichier_pdf = db.Column(db.String(300))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -43,11 +43,11 @@ class Paiement(db.Model):
     carte_id = db.Column(db.Integer, db.ForeignKey('cartes.id'), nullable=False)
     utilisateur_id = db.Column(db.Integer, db.ForeignKey('utilisateurs.id'), nullable=True)
     telephone = db.Column(db.String(20))
-    montant = db.Column(db.Integer, default=2000)  # en FCFA
-    statut = db.Column(db.String(20), default='en_attente')  # en_attente | success | echec
+    montant = db.Column(db.Integer, default=2000)
+    statut = db.Column(db.String(20), default='en_attente')
     wave_transaction_id = db.Column(db.String(200))
     wave_checkout_url = db.Column(db.String(500))
-    format_export = db.Column(db.String(10), default='png')  # png | pdf
+    format_export = db.Column(db.String(10), default='png')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
