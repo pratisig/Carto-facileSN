@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
-# Script de build Render - installé et seed automatique
 set -o errexit
 
-echo "=== Installation des dépendances ==="
-pip install --upgrade pip
+echo "=== Python version ==="
+python --version
+
+echo "=== Mise a jour pip + setuptools ==="
+pip install --upgrade pip setuptools wheel
+
+echo "=== Installation des dependances ==="
 pip install -r requirements_lite.txt
 
-echo "=== Création des dossiers ==="
+echo "=== Creation des dossiers ==="
 mkdir -p uploads exports
 
-echo "=== Seed de la base de données ==="
+echo "=== Seed de la base de donnees ==="
 python scripts/seed_lite.py
 
-echo "=== Build terminé ==="
+echo "=== Build termine ==="
