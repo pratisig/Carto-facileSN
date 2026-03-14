@@ -1,0 +1,34 @@
+# Requirements LÉGERS pour PythonAnywhere (plan gratuit)
+# Installation: pip install -r requirements_lite.txt
+
+# Framework
+Flask==3.0.3
+Flask-CORS==4.0.1
+Flask-SQLAlchemy==3.1.1
+gunicorn==22.0.0
+
+# Géospatial LÉGER (pas de geopandas/fiona/GDAL)
+pyshp==2.3.1
+shapely==2.0.4
+
+# Base de données
+SQLAlchemy==2.0.30
+
+# Données
+pandas==2.2.2
+numpy==1.26.4
+geojson==3.1.0
+
+# Export
+matplotlib==3.8.4
+reportlab==4.2.0
+pillow==10.3.0
+
+# Auth & API
+pyjwt==2.8.0
+requests==2.32.2
+
+# Utilitaires
+python-dotenv==1.0.1
+loguru==0.7.2
+pydantic==2.7.1
