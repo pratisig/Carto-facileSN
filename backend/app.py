@@ -16,12 +16,16 @@ def create_app():
     from routes.exports import exports_bp
     from routes.donnees import donnees_bp
     from routes.utilisateurs import utilisateurs_bp
+    from routes.couches import couches_bp
+    from routes.ocsol import ocsol_bp
 
     app.register_blueprint(communes_bp, url_prefix='/api/communes')
     app.register_blueprint(cartes_bp, url_prefix='/api/cartes')
     app.register_blueprint(exports_bp, url_prefix='/api/exports')
     app.register_blueprint(donnees_bp, url_prefix='/api/donnees')
     app.register_blueprint(utilisateurs_bp, url_prefix='/api/utilisateurs')
+    app.register_blueprint(couches_bp, url_prefix='/api/couches')
+    app.register_blueprint(ocsol_bp, url_prefix='/api/ocsol')
 
     with app.app_context():
         db.create_all()
