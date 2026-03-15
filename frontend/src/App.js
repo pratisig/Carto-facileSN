@@ -36,13 +36,11 @@ export default function App() {
   const [selArr,     setSelArr]     = useState('');
   const [selCommune, setSelCommune] = useState('');
 
-  // Visibilite polygones
   const [visRegions,  setVisRegions]  = useState(true);
   const [visDeps,     setVisDeps]     = useState(true);
   const [visArrs,     setVisArrs]     = useState(false);
   const [visCommunes, setVisCommunes] = useState(true);
 
-  // Etiquettes independantes par niveau
   const [visEtiquettes, setVisEtiquettes] = useState({
     regions: true, departements: true, arrondissements: false, communes: false,
   });
@@ -50,15 +48,14 @@ export default function App() {
     setVisEtiquettes(prev => ({ ...prev, [niveau]: val }));
   }, []);
 
-  // Couleur personnalisable de la commune selectionnee
   const [couleurCommune, setCouleurCommune] = useState('#e74c3c');
 
-  // Couches thematiques
-  const [couchesActives,     setCouchesActives]     = useState(['routes', 'cours_eau']);
+  // Aucune couche active par défaut — l'utilisateur choisit
+  const [couchesActives,     setCouchesActives]     = useState([]);
   const [geojsonThematiques, setGeojsonThematiques] = useState({});
   const [loadingCouche,      setLoadingCouche]      = useState(false);
 
-  // Cache ref pour eviter la stale closure
+  // Cache ref pour éviter la stale closure
   const geojsonCacheRef = useRef({});
 
   const [importData,  setImportData]  = useState(null);
@@ -82,42 +79,37 @@ export default function App() {
   const onCommuneChange = useCallback(v => setSelCommune(v), []);
   const onReset         = useCallback(() => { setSelRegion(''); setSelDep(''); setSelArr(''); setSelCommune(''); }, []);
 
-  // Charger une couche thematique — utilise le cache ref pour eviter stale closure
+  // Charger une couche — stable grâce au cache ref (pas de stale closure)
   const chargerCouche = useCallback(async (id) => {
-    if (geojsonCacheRef.current[id]) return; // deja en cache
-    setLoadingCouche(true);
+    if (geojsonCacheRef.current[id]) return;
     try {
       const r = await fetch(`${API}/api/couches/thematique/${id}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
-      console.log(`[App] Couche ${id}: ${data?.features?.length} features`);
-      // Stocker dans le ref ET dans le state
+      console.log(`[App] Couche ${id}: ${data?.features?.length ?? 0} features`);
       geojsonCacheRef.current[id] = data;
       setGeojsonThematiques(prev => ({ ...prev, [id]: data }));
     } catch(e) {
       console.warn('[App] Erreur couche', id, e.message);
-    } finally {
-      setLoadingCouche(false);
     }
-  }, []); // pas de dependance sur geojsonThematiques -> plus de stale closure
+  }, []);
 
-  // Charger les couches actives par defaut au demarrage
+  // Précharger TOUTES les couches en arrière-plan dès le démarrage
+  // Elles sont en mémoire -> affichage instantané au toggle
   useEffect(() => {
-    couchesActives.forEach(id => chargerCouche(id));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // une seule fois au montage
+    setLoadingCouche(true);
+    Promise.all(CATALOGUE.map(c => chargerCouche(c.id)))
+      .finally(() => setLoadingCouche(false));
+  }, [chargerCouche]);
 
   const toggleCouche = useCallback((id) => {
-    const estActif = couchesActives.includes(id);
-    if (!estActif) {
-      setCouchesActives(prev => [...prev, id]);
-      chargerCouche(id);
-    } else {
-      setCouchesActives(prev => prev.filter(c => c !== id));
-    }
-  }, [couchesActives, chargerCouche]);
+    setCouchesActives(prev =>
+      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+    );
+    // chargerCouche est idempotent (no-op si déjà en cache)
+    chargerCouche(id);
+  }, [chargerCouche]);
 
-  // Import fichier
   const handleImportFile = useCallback((e) => {
     const file = e.target.files[0];
     if (!file) return;
