@@ -1,67 +1,50 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify
+from services.admin_shp_service import _lire_shp, _col
+from services.geo_cache import prechauffer_cache, get_geojson_admin
 import os
 
 admin_bp = Blueprint('admin', __name__)
-ADMIN_KEY = os.environ.get('ADMIN_KEY', 'carto-admin-2026')
 
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
 
 @admin_bp.route('/status', methods=['GET'])
 def status():
-    from models.commune import Region, Departement, Commune
-    from models.donnee_sectorielle import DonneeSectorielle
-    from models.carte import Carte
-    return jsonify({
-        'regions': Region.query.count(),
-        'departements': Departement.query.count(),
-        'communes': Commune.query.count(),
-        'donnees_sectorielles': DonneeSectorielle.query.count(),
-    })
+    """Diagnostic complet : colonnes SHP + nb features."""
+    result = {}
+    for niveau, nom_shp in [
+        ('regions','SEN_Admin1'), ('departements','SEN_Admin2'),
+        ('arrondissements','SEN_Admin3'), ('communes','SEN_Admin4')
+    ]:
+        fields, records = _lire_shp(nom_shp)
+        shp_path = os.path.join(DATA_DIR, f'{nom_shp}.shp')
+        geojson  = get_geojson_admin(niveau)
+        # echantillon de noms
+        noms = []
+        if records:
+            c_nom = _col(fields or [], ['NOM','NAME','ADM1_FR','ADM2_FR','ADM3_FR','ADM4_FR',
+                                        'ADM1_EN','ADM2_EN','ADM3_EN','ADM4_EN',
+                                        'REGION','DEPARTEMEN','ARRONDISSE','COMMUNE'])
+            for rec in records[:5]:
+                val = rec['attrs'].get(c_nom, 'N/A') if c_nom else 'colonne_introuvable'
+                noms.append(str(val))
+        result[niveau] = {
+            'shp_existe': os.path.exists(shp_path),
+            'colonnes': fields or [],
+            'nb_records': len(records),
+            'nb_features_geojson': len(geojson.get('features', [])),
+            'colonne_nom_detectee': _col(fields or [],
+                ['NOM','NAME','ADM1_FR','ADM2_FR','ADM3_FR','ADM4_FR',
+                 'ADM1_EN','ADM2_EN','ADM3_EN','ADM4_EN',
+                 'REGION','DEPARTEMEN','ARRONDISSE','COMMUNE']),
+            'exemples_noms': noms,
+            'exemple_premiere_feature': geojson['features'][0]['properties'] if geojson.get('features') else {}
+        }
+    return jsonify({'statut': 'ok', 'data': result})
 
-
-@admin_bp.route('/reseed', methods=['GET', 'POST'])
-def reseed():
-    key = request.headers.get('X-Admin-Key', '') or request.args.get('key', '')
-    if key != ADMIN_KEY:
-        return jsonify({'erreur': 'Non autorise'}), 403
-
-    from extensions import db
-    from models.commune import Region, Departement, Commune
-    from models.donnee_sectorielle import DonneeSectorielle
-    from models.carte import Carte
-    from flask import current_app
-    import sys
-
-    logs = []
+@admin_bp.route('/prechauffer', methods=['POST'])
+def prechauffer():
     try:
-        # Supprimer dans l'ordre des foreign keys
-        Carte.query.delete();             db.session.flush(); logs.append('Cartes videes')
-        DonneeSectorielle.query.delete(); db.session.flush(); logs.append('DonneesSect videes')
-        Commune.query.delete();           db.session.flush(); logs.append('Communes videes')
-        Departement.query.delete();       db.session.flush(); logs.append('Departements vides')
-        Region.query.delete();            db.session.flush(); logs.append('Regions videes')
-        db.session.commit()
-        logs.append('Tables videes OK')
-
-        # Recharger le module seed
-        for k in list(sys.modules.keys()):
-            if 'seed_lite' in k:
-                del sys.modules[k]
-
-        import scripts.seed_lite as seed_module
-        app = current_app._get_current_object()
-
-        rmap = seed_module.seed_regions(app, db, Region)
-        dmap = seed_module.seed_departements(app, db, Departement, Region)
-        cmap = seed_module.seed_communes(app, db, Commune, Departement)
-
-        return jsonify({
-            'statut': 'OK',
-            'regions': len(rmap),
-            'departements': len(dmap),
-            'communes': len(cmap),
-            'logs': logs
-        })
+        prechauffer_cache()
+        return jsonify({'statut': 'ok', 'message': 'Cache prechauffé'})
     except Exception as e:
-        db.session.rollback()
-        import traceback
-        return jsonify({'erreur': str(e), 'trace': traceback.format_exc(), 'logs': logs}), 500
+        return jsonify({'statut': 'erreur', 'message': str(e)}), 500
