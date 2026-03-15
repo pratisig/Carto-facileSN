@@ -4,11 +4,11 @@ import CarteV3 from './components/CarteV3';
 import PanneauGauche from './components/PanneauGauche';
 import GestionnaireCouches from './components/GestionnaireCouches';
 import Header from './components/Header';
+import ExportCarteModal from './components/ExportCarteModal';
 import './App.css';
 
 const API = process.env.REACT_APP_API_URL || 'https://carto-facilesn-api.onrender.com';
 
-// Catalogue statique des couches thematiques
 const CATALOGUE = [
   { groupe: 'Transport',   id: 'routes',          label: 'Reseau routier',     couleur: '#888888', icon: '\u{1F6E3}' },
   { groupe: 'Transport',   id: 'chemin_fer',       label: 'Chemins de fer',     couleur: '#444444', icon: '\u{1F682}' },
@@ -32,48 +32,42 @@ export default function App() {
     getFeatureByPcode,
   } = useGeoData();
 
-  // Selections
   const [selRegion,   setSelRegion]   = useState('');
   const [selDep,      setSelDep]      = useState('');
   const [selArr,      setSelArr]      = useState('');
   const [selCommune,  setSelCommune]  = useState('');
 
-  // Couches admin visibles
   const [visRegions,    setVisRegions]    = useState(true);
   const [visDeps,       setVisDeps]       = useState(true);
   const [visArrs,       setVisArrs]       = useState(false);
   const [visCommunes,   setVisCommunes]   = useState(true);
   const [visEtiquettes, setVisEtiquettes] = useState(true);
 
-  // Couches thematiques
-  const [couchesActives, setCouchesActives]       = useState(['routes', 'cours_eau']);
-  const [geojsonThematiques, setGeojsonThematiques] = useState({});
-  const [loadingCouche, setLoadingCouche]           = useState(false);
+  const [couchesActives,      setCouchesActives]      = useState(['routes', 'cours_eau']);
+  const [geojsonThematiques,  setGeojsonThematiques]  = useState({});
+  const [loadingCouche,       setLoadingCouche]       = useState(false);
 
-  // Import fichier
   const [importData, setImportData] = useState(null);
+  const [showExport, setShowExport] = useState(false);
   const inputImportRef = useRef(null);
+  const mapRef = useRef(null);
 
-  // Listes filtrees
   const regions         = getRegions();
   const departements    = getDepartements(selRegion);
   const arrondissements = getArrondissements(selDep);
   const communes        = getCommunes(selArr);
 
-  // Features selectionnees
-  const featRegion  = selRegion  ? getFeatureByPcode('regions', selRegion)             : null;
-  const featDep     = selDep     ? getFeatureByPcode('departements', selDep)           : null;
-  const featArr     = selArr     ? getFeatureByPcode('arrondissements', selArr)        : null;
-  const featCommune = selCommune ? getFeatureByPcode('communes', selCommune)           : null;
+  const featRegion  = selRegion  ? getFeatureByPcode('regions',         selRegion)  : null;
+  const featDep     = selDep     ? getFeatureByPcode('departements',     selDep)     : null;
+  const featArr     = selArr     ? getFeatureByPcode('arrondissements',  selArr)     : null;
+  const featCommune = selCommune ? getFeatureByPcode('communes',         selCommune) : null;
 
-  // Handlers cascade
   const onRegionChange  = useCallback(v => { setSelRegion(v); setSelDep(''); setSelArr(''); setSelCommune(''); }, []);
   const onDepChange     = useCallback(v => { setSelDep(v);    setSelArr(''); setSelCommune(''); }, []);
   const onArrChange     = useCallback(v => { setSelArr(v);    setSelCommune(''); }, []);
   const onCommuneChange = useCallback(v => { setSelCommune(v); }, []);
   const onReset         = useCallback(() => { setSelRegion(''); setSelDep(''); setSelArr(''); setSelCommune(''); }, []);
 
-  // Chargement couche thematique a la demande
   const chargerCouche = useCallback(async (id) => {
     if (geojsonThematiques[id]) return;
     setLoadingCouche(true);
@@ -92,7 +86,6 @@ export default function App() {
     chargerCouche(id);
   }, [chargerCouche]);
 
-  // Import fichier
   const handleImportFile = useCallback((e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -104,7 +97,6 @@ export default function App() {
         if (file.name.endsWith('.geojson') || file.name.endsWith('.json')) {
           geojson = JSON.parse(text);
         } else if (file.name.endsWith('.csv')) {
-          // CSV -> GeoJSON points (colonnes lat/lon ou latitude/longitude)
           const lines = text.trim().split('\n');
           const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
           const iLat = headers.findIndex(h => ['lat','latitude','y'].includes(h));
@@ -138,27 +130,28 @@ export default function App() {
       {erreur    && <div className="banniere-erreur">⚠️ {erreur}</div>}
       <div className="main-layout">
         <PanneauGauche
-          regions={regions} departements={departements}
-          arrondissements={arrondissements} communes={communes}
-          selRegion={selRegion} selDep={selDep}
-          selArr={selArr}       selCommune={selCommune}
-          onRegionChange={onRegionChange} onDepChange={onDepChange}
-          onArrChange={onArrChange}       onCommuneChange={onCommuneChange}
+          regions={regions}  departements={departements}
+          arrondissements={arrondissements}  communes={communes}
+          selRegion={selRegion}  selDep={selDep}
+          selArr={selArr}        selCommune={selCommune}
+          onRegionChange={onRegionChange}  onDepChange={onDepChange}
+          onArrChange={onArrChange}        onCommuneChange={onCommuneChange}
           onReset={onReset}
-          featRegion={featRegion} featDep={featDep}
-          featArr={featArr}       featCommune={featCommune}
-          visRegions={visRegions}   setVisRegions={setVisRegions}
-          visDeps={visDeps}         setVisDeps={setVisDeps}
-          visArrs={visArrs}         setVisArrs={setVisArrs}
-          visCommunes={visCommunes} setVisCommunes={setVisCommunes}
-          visEtiquettes={visEtiquettes} setVisEtiquettes={setVisEtiquettes}
+          featRegion={featRegion}  featDep={featDep}
+          featArr={featArr}        featCommune={featCommune}
+          visRegions={visRegions}    setVisRegions={setVisRegions}
+          visDeps={visDeps}          setVisDeps={setVisDeps}
+          visArrs={visArrs}          setVisArrs={setVisArrs}
+          visCommunes={visCommunes}  setVisCommunes={setVisCommunes}
+          visEtiquettes={visEtiquettes}  setVisEtiquettes={setVisEtiquettes}
           importData={importData}
           onImportClick={() => inputImportRef.current?.click()}
           onImportClear={clearImport}
+          onExportClick={() => setShowExport(true)}
           loading={chargement || loadingCouche}
         />
         <input
-          ref={inputImportRef} type="file"
+          ref={inputImportRef}  type="file"
           accept=".geojson,.json,.csv,.kml"
           style={{ display: 'none' }}
           onChange={handleImportFile}
@@ -175,11 +168,12 @@ export default function App() {
           catalogue={CATALOGUE}
           importData={importData}
           chargement={chargement}
-          selRegion={selRegion} selDep={selDep}
-          selArr={selArr}       selCommune={selCommune}
+          selRegion={selRegion}  selDep={selDep}
+          selArr={selArr}        selCommune={selCommune}
           onRegionClick={onRegionChange}
           onDepClick={onDepChange}
           onCommuneClick={onCommuneChange}
+          mapRef={mapRef}
         />
         <GestionnaireCouches
           catalogue={CATALOGUE}
@@ -188,6 +182,18 @@ export default function App() {
           geojsonThematiques={geojsonThematiques}
         />
       </div>
+
+      {showExport && (
+        <ExportCarteModal
+          onClose={() => setShowExport(false)}
+          mapRef={mapRef}
+          featRegion={featRegion}  featDep={featDep}
+          featArr={featArr}        featCommune={featCommune}
+          geoData={geoData}
+          titre={`Carte ${featCommune?.properties?._nom || featArr?.properties?._nom || featDep?.properties?._nom || featRegion?.properties?._nom || 'administrative du Sénégal'}`}
+          sousTitre={featRegion ? `Région de ${featRegion.properties._nom}` : ''}
+        />
+      )}
     </div>
   );
 }

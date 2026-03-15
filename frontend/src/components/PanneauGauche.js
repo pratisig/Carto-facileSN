@@ -23,12 +23,12 @@ export default function PanneauGauche({
   visRegions, setVisRegions, visDeps, setVisDeps,
   visArrs, setVisArrs, visCommunes, setVisCommunes,
   visEtiquettes, setVisEtiquettes,
-  importData, onImportClick, onImportClear,
+  importData, onImportClick, onImportClear, onExportClick,
   loading
 }) {
   const zoneActive = featCommune || featArr || featDep || featRegion;
-  const nomZone = zoneActive?.properties?._nom || '';
-  const pcodeZone = zoneActive?.properties?._pcode || '';
+  const nomZone    = zoneActive?.properties?._nom || '';
+  const pcodeZone  = zoneActive?.properties?._pcode || '';
 
   return (
     <div className="panneau-gauche">
@@ -116,17 +116,17 @@ export default function PanneauGauche({
               {!featCommune && !featArr && featDep && <span className="stat-chip">📍 Département</span>}
               {!featCommune && !featArr && !featDep && featRegion && <span className="stat-chip">🌍 Région</span>}
               {featArr && communes.length > 0 && <span className="stat-chip">{communes.length} communes</span>}
-              {featDep && arrondissements.length > 0 && <span className="stat-chip">{arrondissements.length} arr.</span>}
+              {featDep && !featArr && arrondissements.length > 0 && <span className="stat-chip">{arrondissements.length} arr.</span>}
             </div>
           </div>
         )}
 
         {(selRegion || selDep || selArr || selCommune) && (
-          <button className="btn-reset" onClick={onReset}>↺ Réinitialiser la sélection</button>
+          <button className="btn-reset" onClick={onReset}>↺ Réinitialiser</button>
         )}
       </div>
 
-      {/* Visibilite des couches admin */}
+      {/* Couches admin */}
       <div className="pg-section">
         <div className="pg-section-title">
           <span>📂</span> Couches administratives
@@ -150,14 +150,9 @@ export default function PanneauGauche({
             📂 Importer<br/>
             <span style={{fontWeight:400, fontSize:'0.68rem'}}>CSV / GeoJSON</span>
           </button>
-          <button className="btn-io export" id="btn-export-png">
-            🖼️ PNG HD
-          </button>
-          <button className="btn-io export" id="btn-export-pdf">
-            📄 PDF
-          </button>
-          <button className="btn-io export" id="btn-export-geojson">
-            🌐 GeoJSON
+          <button className="btn-io export" onClick={onExportClick}>
+            🗺️ Exporter<br/>
+            <span style={{fontWeight:400, fontSize:'0.68rem'}}>PNG / PDF</span>
           </button>
         </div>
         {importData && (
@@ -174,7 +169,7 @@ export default function PanneauGauche({
 
       {loading && (
         <div style={{ padding: '8px 14px', fontSize: '0.75rem', color: '#1a5276' }}>
-          ⏳ Chargement en cours...
+          ⏳ Chargement...
         </div>
       )}
     </div>
