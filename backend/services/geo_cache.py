@@ -25,7 +25,7 @@ COUCHES_THEMATIQUES = {
     'agglomerations':   'BS_AGGLOMERATION_S',
     'aeroports':        'TR_AEROPORT_P',
     'localites':        'LA_LOCALITE_P',
-    'frontieres':       'LA_FRONTIERE_INTERNATIONALE_L',
+    'frontieres':       'LA_FRONTIERE_INTERNATIONALE_FRONTIERE_ETAT_L',
     'surfaces_boisees': 'VE_SURFACE_BOISEE_S',
 }
 
