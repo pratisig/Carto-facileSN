@@ -1,17 +1,18 @@
 import React from 'react';
+
 export default function Header() {
   return (
-    <header className="header">
-      <div className="header-left">
-        <span className="header-logo">🇸🇳</span>
+    <header className="app-header">
+      <div className="app-header-left">
+        <span className="app-header-logo">🗺️</span>
         <div>
-          <div className="header-title">Carto-facileSN</div>
-          <div className="header-subtitle">Cartographie administrative du Sénégal</div>
+          <div className="app-header-title">Carto-facileSN</div>
+          <div className="app-header-sub">Cartographie administrative du Sénégal</div>
         </div>
       </div>
-      <div className="header-right">
-        <span className="header-badge">📍 WGS 84</span>
-        <span className="header-badge">v2.0</span>
+      <div className="app-header-right">
+        <span className="app-header-badge">WGS 84 v2.0</span>
+        <span className="app-header-badge">SHP IGN-SN</span>
       </div>
     </header>
   );
