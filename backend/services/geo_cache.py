@@ -1,11 +1,4 @@
-"""Cache GeoJSON centralise — lit les SHP SEN_Admin1 a 4 une seule fois.
-
-Structure attendue des SHP :
-  SEN_Admin1 : PCODE, NOM (ou NAME/ADM1_FR)
-  SEN_Admin2 : PCODE, NOM, ADMIN1_PCO
-  SEN_Admin3 : PCODE, NOM, ADMIN1_PCO, ADMIN2_PCO
-  SEN_Admin4 : PCODE, NOM, ADMIN1_PCO, ADMIN2_PCO, ADMIN3_PCO
-"""
+"""Cache GeoJSON centralise — lit les SHP SEN_Admin1 a 4 une seule fois."""
 import os
 import json
 import functools
@@ -36,17 +29,20 @@ COUCHES_THEMATIQUES = {
     'surfaces_boisees': 'VE_SURFACE_BOISEE_S',
 }
 
-# Colonne NOM par niveau
-NOM_CANDIDATS = {
-    'regions':         ['NOM', 'NAME', 'ADM1_FR', 'ADM1_EN', 'REGION'],
-    'departements':    ['NOM', 'NAME', 'ADM2_FR', 'ADM2_EN', 'DEPARTEMEN'],
-    'arrondissements': ['NOM', 'NAME', 'ADM3_FR', 'ADM3_EN', 'ARRONDISSE'],
-    'communes':        ['NOM', 'NAME', 'ADM4_FR', 'ADM4_EN', 'COMMUNE'],
-}
+# Candidats NOM — NAME_LOCAL en premier pour les 4 niveaux
+NOM_CANDIDATS = [
+    'NAME_LOCAL', 'NOM', 'NAME', 'ADM1_FR', 'ADM2_FR', 'ADM3_FR', 'ADM4_FR',
+    'ADM1_EN', 'ADM2_EN', 'ADM3_EN', 'ADM4_EN',
+    'REGION', 'DEPARTEMEN', 'ARRONDISSE', 'COMMUNE', 'NOM_REG', 'NOM_DEP',
+]
+
+PCODE_CANDIDATS     = ['PCODE', 'ADM1_PCODE', 'ADM2_PCODE', 'ADM3_PCODE', 'ADM4_PCODE', 'CODE']
+ADMIN1_CANDIDATS    = ['ADMIN1_PCO', 'ADM1_PCODE']
+ADMIN2_CANDIDATS    = ['ADMIN2_PCO', 'ADM2_PCODE']
+ADMIN3_CANDIDATS    = ['ADMIN3_PCO', 'ADM3_PCODE']
 
 
 def _shp_to_geojson(nom_shp, niveau=None):
-    """Lit un SHP et retourne un FeatureCollection GeoJSON avec proprietes normalisees."""
     chemin = os.path.join(DATA_DIR, f'{nom_shp}.shp')
     if not os.path.exists(chemin):
         print(f'[geo_cache] SHP introuvable: {chemin}')
@@ -58,13 +54,13 @@ def _shp_to_geojson(nom_shp, niveau=None):
 
     print(f'[geo_cache] {nom_shp} colonnes: {fields}')
 
-    # Detecter colonnes PCODE
-    c_pcode    = _col(fields, ['PCODE', 'ADM1_PCODE', 'ADM2_PCODE', 'ADM3_PCODE', 'ADM4_PCODE', 'CODE'])
-    c_admin1   = _col(fields, ['ADMIN1_PCO', 'ADM1_PCODE'])
-    c_admin2   = _col(fields, ['ADMIN2_PCO', 'ADM2_PCODE'])
-    c_admin3   = _col(fields, ['ADMIN3_PCO', 'ADM3_PCODE'])
-    candidats_nom = NOM_CANDIDATS.get(niveau, ['NOM', 'NAME']) if niveau else ['NOM', 'NAME']
-    c_nom      = _col(fields, candidats_nom)
+    c_nom    = _col(fields, NOM_CANDIDATS)
+    c_pcode  = _col(fields, PCODE_CANDIDATS)
+    c_admin1 = _col(fields, ADMIN1_CANDIDATS)
+    c_admin2 = _col(fields, ADMIN2_CANDIDATS)
+    c_admin3 = _col(fields, ADMIN3_CANDIDATS)
+
+    print(f'[geo_cache] {nom_shp} -> col_nom={c_nom}, col_pcode={c_pcode}')
 
     features = []
     for i, rec in enumerate(records, start=1):
@@ -78,33 +74,43 @@ def _shp_to_geojson(nom_shp, niveau=None):
         props = dict(rec['attrs'])
         props['_id'] = i
 
-        # Proprietes normalisees pour le frontend
+        # Nom : NAME_LOCAL prioritaire
+        nom_val = ''
         if c_nom:
-            props['_nom'] = _title(_decode(rec['attrs'].get(c_nom, '')))
+            nom_val = _title(_decode(rec['attrs'].get(c_nom, '')))
+        # Si toujours vide, chercher dans toutes les colonnes string
+        if not nom_val or nom_val.lower() in ('', 'nan', 'none'):
+            for k, v in rec['attrs'].items():
+                v_str = _decode(v)
+                if v_str and v_str.lower() not in ('nan','none') and len(v_str) > 1:
+                    nom_val = _title(v_str)
+                    break
+        if not nom_val:
+            nom_val = f'{niveau or "entite"} {i}'
+
+        props['_nom']   = nom_val
+        props['_niveau'] = niveau or ''
+
         if c_pcode:
-            props['_pcode'] = _decode(rec['attrs'].get(c_pcode, ''))
+            props['_pcode'] = _decode(rec['attrs'].get(c_pcode, str(i)))
+        else:
+            props['_pcode'] = str(i)
+
         if c_admin1:
             props['_pcode_region'] = _decode(rec['attrs'].get(c_admin1, ''))
         if c_admin2:
-            props['_pcode_dep'] = _decode(rec['attrs'].get(c_admin2, ''))
+            props['_pcode_dep']    = _decode(rec['attrs'].get(c_admin2, ''))
         if c_admin3:
-            props['_pcode_arr'] = _decode(rec['attrs'].get(c_admin3, ''))
-        if niveau:
-            props['_niveau'] = niveau
+            props['_pcode_arr']    = _decode(rec['attrs'].get(c_admin3, ''))
 
-        features.append({
-            'type': 'Feature',
-            'geometry': geom,
-            'properties': props,
-        })
+        features.append({'type': 'Feature', 'geometry': geom, 'properties': props})
 
-    print(f'[geo_cache] {nom_shp}: {len(features)} features chargees')
+    print(f'[geo_cache] {nom_shp}: {len(features)} features. Ex nom: {features[0]["properties"]["_nom"] if features else "N/A"}')
     return {'type': 'FeatureCollection', 'features': features}
 
 
 @functools.lru_cache(maxsize=None)
 def get_geojson_admin(niveau: str):
-    """Retourne le GeoJSON complet d'un niveau admin (mis en cache lru)."""
     nom_shp = COUCHES_ADMIN.get(niveau)
     if not nom_shp:
         return {'type': 'FeatureCollection', 'features': [], 'erreur': 'Niveau inconnu'}
@@ -113,7 +119,6 @@ def get_geojson_admin(niveau: str):
 
 @functools.lru_cache(maxsize=None)
 def get_geojson_thematique(couche: str):
-    """Retourne le GeoJSON complet d'une couche thematique (mis en cache)."""
     nom_shp = COUCHES_THEMATIQUES.get(couche)
     if not nom_shp:
         return {'type': 'FeatureCollection', 'features': [], 'erreur': 'Couche inconnue'}
@@ -121,7 +126,6 @@ def get_geojson_thematique(couche: str):
 
 
 def prechauffer_cache():
-    """Pre-charge tous les GeoJSON admin au demarrage Flask."""
     print('[geo_cache] Prechauffage du cache GeoJSON...')
     for niveau in COUCHES_ADMIN:
         get_geojson_admin(niveau)
