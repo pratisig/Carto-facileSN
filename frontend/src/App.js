@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useGeoData } from './hooks/useGeoData';
 import CarteV3 from './components/CarteV3';
 import PanneauGauche from './components/PanneauGauche';
@@ -50,10 +50,16 @@ export default function App() {
     setVisEtiquettes(prev => ({ ...prev, [niveau]: val }));
   }, []);
 
+  // Couleur personnalisable de la commune selectionnee
+  const [couleurCommune, setCouleurCommune] = useState('#e74c3c');
+
   // Couches thematiques
   const [couchesActives,     setCouchesActives]     = useState(['routes', 'cours_eau']);
   const [geojsonThematiques, setGeojsonThematiques] = useState({});
   const [loadingCouche,      setLoadingCouche]      = useState(false);
+
+  // Cache ref pour eviter la stale closure
+  const geojsonCacheRef = useRef({});
 
   const [importData,  setImportData]  = useState(null);
   const [showExport,  setShowExport]  = useState(false);
@@ -76,28 +82,36 @@ export default function App() {
   const onCommuneChange = useCallback(v => setSelCommune(v), []);
   const onReset         = useCallback(() => { setSelRegion(''); setSelDep(''); setSelArr(''); setSelCommune(''); }, []);
 
-  // Charger couche thematique depuis l'API
+  // Charger une couche thematique — utilise le cache ref pour eviter stale closure
   const chargerCouche = useCallback(async (id) => {
-    if (geojsonThematiques[id]) return; // deja en cache
+    if (geojsonCacheRef.current[id]) return; // deja en cache
     setLoadingCouche(true);
     try {
       const r = await fetch(`${API}/api/couches/thematique/${id}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       console.log(`[App] Couche ${id}: ${data?.features?.length} features`);
+      // Stocker dans le ref ET dans le state
+      geojsonCacheRef.current[id] = data;
       setGeojsonThematiques(prev => ({ ...prev, [id]: data }));
     } catch(e) {
       console.warn('[App] Erreur couche', id, e.message);
     } finally {
       setLoadingCouche(false);
     }
-  }, [geojsonThematiques]);
+  }, []); // pas de dependance sur geojsonThematiques -> plus de stale closure
+
+  // Charger les couches actives par defaut au demarrage
+  useEffect(() => {
+    couchesActives.forEach(id => chargerCouche(id));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // une seule fois au montage
 
   const toggleCouche = useCallback((id) => {
     const estActif = couchesActives.includes(id);
     if (!estActif) {
       setCouchesActives(prev => [...prev, id]);
-      chargerCouche(id); // charge si pas encore en cache
+      chargerCouche(id);
     } else {
       setCouchesActives(prev => prev.filter(c => c !== id));
     }
@@ -173,6 +187,7 @@ export default function App() {
           visArrs={visArrs}              setVisArrs={setVisArrs}
           visCommunes={visCommunes}      setVisCommunes={setVisCommunes}
           visEtiquettes={visEtiquettes}  setVisEtiquette={setVisEtiquette}
+          couleurCommune={couleurCommune}  setCouleurCommune={setCouleurCommune}
           importData={importData}
           onImportClick={()=>inputImportRef.current?.click()}
           onImportClear={()=>setImportData(null)}
@@ -201,6 +216,7 @@ export default function App() {
           onRegionClick={onRegionChange}
           onDepClick={onDepChange}
           onCommuneClick={onCommuneChange}
+          couleurCommune={couleurCommune}
           mapRef={mapRef}
         />
 

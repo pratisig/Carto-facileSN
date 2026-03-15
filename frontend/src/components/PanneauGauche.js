@@ -22,8 +22,8 @@ export default function PanneauGauche({
   featRegion, featDep, featArr, featCommune,
   visRegions, setVisRegions, visDeps, setVisDeps,
   visArrs, setVisArrs, visCommunes, setVisCommunes,
-  // visEtiquettes est maintenant un objet {regions, departements, arrondissements, communes}
   visEtiquettes, setVisEtiquette,
+  couleurCommune, setCouleurCommune,
   importData, onImportClick, onImportClear, onExportClick,
   loading
 }) {
@@ -75,69 +75,76 @@ export default function PanneauGauche({
         </div>
 
         {zoneActive && (
-          <div className="fiche-zone">
-            <div className="fiche-zone-nom">{nomZone}</div>
-            <div className="fiche-zone-pcode">{pcodeZone}</div>
-            <div className="fiche-zone-stats">
-              {featCommune && <span className="stat-chip">🏡 Commune</span>}
-              {!featCommune && featArr && <span className="stat-chip">📢 Arrondissement</span>}
-              {!featCommune && !featArr && featDep && <span className="stat-chip">📍 Département</span>}
-              {!featCommune && !featArr && !featDep && featRegion && <span className="stat-chip">🌍 Région</span>}
-              {featArr && communes.length>0 && <span className="stat-chip">{communes.length} communes</span>}
-              {featDep && !featArr && arrondissements.length>0 && <span className="stat-chip">{arrondissements.length} arr.</span>}
-            </div>
+          <div className="zone-active-card">
+            <div className="zone-active-nom">{nomZone}</div>
+            <div className="zone-active-pcode">{pcodeZone}</div>
+            <button className="btn-reset" onClick={onReset}>✕ Réinitialiser</button>
           </div>
         )}
-        {(selRegion||selDep||selArr||selCommune) && (
-          <button className="btn-reset" onClick={onReset}>↺ Réinitialiser</button>
-        )}
       </div>
 
-      {/* Couches admin */}
-      <div className="pg-section">
-        <div className="pg-section-title"><span>📂</span> Couches administratives</div>
-        <ToggleRow dot="#7f8c8d" label="Régions (polygones)"       checked={visRegions}  onChange={setVisRegions} />
-        <ToggleRow dot="#1a5276" label="Départements (polygones)"   checked={visDeps}     onChange={setVisDeps} />
-        <ToggleRow dot="#117a65" label="Arrondissements (polygones)" checked={visArrs}     onChange={setVisArrs} />
-        <ToggleRow dot="#e74c3c" label="Communes (polygones)"       checked={visCommunes} onChange={setVisCommunes} />
-      </div>
-
-      {/* Etiquettes individuelles */}
-      <div className="pg-section">
-        <div className="pg-section-title"><span>🏷️</span> Étiquettes (auto-zoom)</div>
-        <div style={{fontSize:'0.68rem',color:'#888',marginBottom:6,lineHeight:1.5}}>
-          Régions ≥ zoom 5 · Dép. ≥ 8 · Arr. ≥ 10 · Communes ≥ 11
+      {/* Personnalisation couleur commune selectionnee */}
+      {selCommune && (
+        <div className="pg-section">
+          <div className="pg-section-title"><span>🎨</span> Couleur commune</div>
+          <div style={{display:'flex', alignItems:'center', gap:10, padding:'4px 0'}}>
+            <input
+              type="color"
+              value={couleurCommune}
+              onChange={e => setCouleurCommune(e.target.value)}
+              style={{
+                width:36, height:30, cursor:'pointer',
+                border:'1.5px solid #cdd9e0', borderRadius:6, padding:2,
+                background:'white'
+              }}
+              title="Choisir la couleur de la commune sélectionnée"
+            />
+            <span style={{fontSize:'0.8rem', color:'#4a6285'}}>
+              Couleur de surbrillance
+            </span>
+            <button
+              onClick={() => setCouleurCommune('#e74c3c')}
+              style={{
+                marginLeft:'auto', fontSize:'0.7rem', padding:'2px 7px',
+                border:'1px solid #cdd9e0', borderRadius:5, cursor:'pointer',
+                background:'#f7f9fc', color:'#888'
+              }}
+              title="Réinitialiser la couleur"
+            >↺</button>
+          </div>
         </div>
-        <ToggleRow dot="#7f8c8d" label="Noms des régions"          checked={visEtiquettes.regions}         onChange={v=>setVisEtiquette('regions',v)} />
-        <ToggleRow dot="#1a5276" label="Noms des départements"      checked={visEtiquettes.departements}    onChange={v=>setVisEtiquette('departements',v)} />
-        <ToggleRow dot="#117a65" label="Noms des arrondissements"   checked={visEtiquettes.arrondissements} onChange={v=>setVisEtiquette('arrondissements',v)} />
-        <ToggleRow dot="#e74c3c" label="Noms des communes"         checked={visEtiquettes.communes}        onChange={v=>setVisEtiquette('communes',v)} />
+      )}
+
+      {/* Visibilite des couches admin */}
+      <div className="pg-section">
+        <div className="pg-section-title"><span>👁️</span> Visibilité</div>
+        <ToggleRow dot="#bdc3c7" label="Régions"         checked={visRegions}  onChange={setVisRegions}  />
+        <ToggleRow dot="#95a5a6" label="Départements"    checked={visDeps}     onChange={setVisDeps}     />
+        <ToggleRow dot="#aab7b8" label="Arrondissements" checked={visArrs}     onChange={setVisArrs}     />
+        <ToggleRow dot="#e74c3c" label="Communes"        checked={visCommunes} onChange={setVisCommunes} />
+      </div>
+
+      {/* Etiquettes */}
+      <div className="pg-section">
+        <div className="pg-section-title"><span>🏷️</span> Étiquettes</div>
+        <ToggleRow dot="#7f8c8d" label="Noms régions"         checked={visEtiquettes.regions}         onChange={v=>setVisEtiquette('regions',v)}         />
+        <ToggleRow dot="#95a5a6" label="Noms départements"    checked={visEtiquettes.departements}    onChange={v=>setVisEtiquette('departements',v)}    />
+        <ToggleRow dot="#aab7b8" label="Noms arrondissements" checked={visEtiquettes.arrondissements} onChange={v=>setVisEtiquette('arrondissements',v)} />
+        <ToggleRow dot="#e74c3c" label="Noms communes"        checked={visEtiquettes.communes}        onChange={v=>setVisEtiquette('communes',v)}        />
       </div>
 
       {/* Import / Export */}
       <div className="pg-section">
-        <div className="pg-section-title"><span>📤</span> Import / Export</div>
-        <div className="io-grid">
-          <button className="btn-io import" onClick={onImportClick}>
-            📂 Importer<br/><span style={{fontWeight:400,fontSize:'0.68rem'}}>CSV / GeoJSON</span>
-          </button>
-          <button className="btn-io export" onClick={onExportClick}>
-            🗺️ Exporter<br/><span style={{fontWeight:400,fontSize:'0.68rem'}}>PNG / PDF</span>
-          </button>
-        </div>
+        <div className="pg-section-title"><span>📂</span> Données</div>
+        <button className="btn-action" onClick={onImportClick}>⬆️ Importer GeoJSON / CSV</button>
         {importData && (
-          <div style={{marginTop:8,fontSize:'0.75rem',color:'#27ae60'}}>
-            ✅ {importData.features?.length||0} entités importées
-            <button onClick={onImportClear}
-              style={{marginLeft:8,fontSize:'0.7rem',color:'#e74c3c',background:'none',border:'none',cursor:'pointer'}}>
-              ✕ Effacer
-            </button>
-          </div>
+          <button className="btn-action btn-danger" onClick={onImportClear}>🗑 Supprimer import</button>
         )}
+        <button className="btn-action" onClick={onExportClick}>⬇️ Exporter carte (PNG)</button>
       </div>
 
       {loading && (
-        <div style={{padding:'8px 14px',fontSize:'0.75rem',color:'#1a5276'}}>⏳ Chargement...</div>
+        <div className="pg-loading">⏳ Chargement...</div>
       )}
     </div>
   );

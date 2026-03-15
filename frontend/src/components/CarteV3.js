@@ -4,12 +4,11 @@
  * - Etiquettes activables individuellement
  * - Couches thematiques correctement rendues
  * - Outils: dessin, mesure, fond de carte
- * - Export centre sur la zone selectionnee
+ * - Couleur personnalisable de la commune selectionnee
  */
 import React, { useEffect, useCallback, useRef, useState } from 'react';
 import {
   MapContainer, TileLayer, GeoJSON, useMap, useMapEvents,
-  LayersControl, FeatureGroup, Tooltip
 } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -20,11 +19,10 @@ const STYLES_BASE = {
   arrondissements: { color:'#95a5a6', weight:1,   fillColor:'#d5d8dc', fillOpacity:0.15 },
   communes:        { color:'#e74c3c', weight:1,   fillColor:'#fadbd8', fillOpacity:0.15 },
 };
-const STYLES_SEL = {
+const STYLES_SEL_BASE = {
   regions:         { color:'#1a5276', weight:3.5, fillColor:'#2471a3', fillOpacity:0.55 },
   departements:    { color:'#154360', weight:3.5, fillColor:'#1a5276', fillOpacity:0.55 },
   arrondissements: { color:'#0e6655', weight:3.5, fillColor:'#117a65', fillOpacity:0.55 },
-  communes:        { color:'#c0392b', weight:3.5, fillColor:'#e74c3c', fillOpacity:0.65 },
 };
 
 const COULEURS_TH = {
@@ -72,7 +70,6 @@ function CoordsBar({ onCoords, onZoom }) {
 }
 
 // ── Etiquettes zoom-dependantes ──────────────────────────────────────────────
-// zoom: pays=6-7, region=8-9, dep=10-11, commune=12+
 const ZOOM_MIN = { regions:5, departements:8, arrondissements:10, communes:11, localites:11 };
 
 function EtiquetteLayer({ data, cssClass, niveau, visible, zoom }) {
@@ -85,7 +82,7 @@ function EtiquetteLayer({ data, cssClass, niveau, visible, zoom }) {
       style={() => ({ color:'transparent', weight:0, fillOpacity:0 })}
       onEachFeature={(feature, layer) => {
         const nom = feature.properties._nom || '';
-        if (!nom || nom.startsWith(niveau.slice(0,-1)+' ')) return; // skip "regions 1"
+        if (!nom || nom.startsWith(niveau.slice(0,-1)+' ')) return;
         layer.bindTooltip(nom, {
           permanent: true, direction:'center',
           className: cssClass, sticky:false,
@@ -95,12 +92,10 @@ function EtiquetteLayer({ data, cssClass, niveau, visible, zoom }) {
   );
 }
 
-// ── Outils: dessin & mesure ─────────────────────────────────────────────────────
-function OutilsDessin({ actif, onToggle }) {
+// ── Outil mesure ─────────────────────────────────────────────────────────────
+function OutilsDessin({ actif }) {
   const map = useMap();
-  const dessinRef = useRef(null);
-  const mesureRef = useRef(null);
-  const [mode, setMode] = useState(null); // 'ligne'|'polygone'|'mesure'|null
+  const [mode, setMode] = useState(null);
   const ptsMesure = useRef([]);
   const markersMesure = useRef([]);
   const lignesMesure = useRef([]);
@@ -143,21 +138,17 @@ function OutilsDessin({ actif, onToggle }) {
       padding:8, display:'flex', flexDirection:'column', gap:4, minWidth:130,
     }}>
       <div style={{fontSize:'0.7rem',fontWeight:700,color:'#1a3a5c',marginBottom:2,padding:'0 4px'}}>OUTILS</div>
-      {[
-        {id:'mesure', icon:'📏', label:'Mesurer distance'},
-      ].map(outil => (
-        <button key={outil.id}
-          onClick={() => setMode(mode===outil.id ? null : outil.id)}
-          style={{
-            background: mode===outil.id ? '#1a5276' : '#f0f4f8',
-            color:      mode===outil.id ? 'white'   : '#1a3a5c',
-            border:'1px solid #cdd9e0', borderRadius:6,
-            padding:'5px 10px', cursor:'pointer', fontSize:'0.78rem',
-            textAlign:'left', fontWeight: mode===outil.id?700:400,
-          }}>
-          {outil.icon} {outil.label}
-        </button>
-      ))}
+      <button
+        onClick={() => setMode(mode==='mesure' ? null : 'mesure')}
+        style={{
+          background: mode==='mesure' ? '#1a5276' : '#f0f4f8',
+          color:      mode==='mesure' ? 'white'   : '#1a3a5c',
+          border:'1px solid #cdd9e0', borderRadius:6,
+          padding:'5px 10px', cursor:'pointer', fontSize:'0.78rem',
+          textAlign:'left', fontWeight: mode==='mesure'?700:400,
+        }}>
+        📏 Mesurer distance
+      </button>
       {mode==='mesure' && (
         <div style={{fontSize:'0.68rem',color:'#888',padding:'2px 4px',lineHeight:1.5}}>
           Cliquez pour ajouter des points.<br/>Double-clic pour terminer.
@@ -209,13 +200,13 @@ export default function CarteV3({
   geoData,
   featRegion, featDep, featArr, featCommune,
   visRegions, visDeps, visArrs, visCommunes,
-  visEtiquettes,        // objet: { regions, departements, arrondissements, communes }
+  visEtiquettes,
   geojsonThematiques, couchesActives, catalogue,
   importData, chargement,
   selRegion, selDep, selArr, selCommune,
   onRegionClick, onDepClick, onCommuneClick,
+  couleurCommune,
   mapRef,
-  outilsActifs,
 }) {
   const [coords, setCoords]   = useState(null);
   const [zoom,   setZoom]     = useState(7);
@@ -225,13 +216,28 @@ export default function CarteV3({
   const zoomTarget = featCommune || featArr || featDep || featRegion;
   const fondConf   = FONDS.find(f=>f.id===fond) || FONDS[0];
 
+  // Style commune avec couleur personnalisable
+  const getStyleCommune = useCallback((couleur) => ({
+    communes: {
+      selectionne: { color: couleur, weight:3.5, fillColor: couleur, fillOpacity:0.60 },
+      base:        { color:'#e74c3c', weight:1, fillColor:'#fadbd8', fillOpacity:0.15 },
+      attenue:     { color:'#e74c3c', weight:1, fillColor:'#fadbd8', fillOpacity:0.04, opacity:0.2 },
+    }
+  }), []);
+
   const styleF = useCallback((niveau, selPcode) => (feature) => {
     const base = { ...STYLES_BASE[niveau] };
+    if (niveau === 'communes' && selPcode) {
+      const communeStyles = getStyleCommune(couleurCommune).communes;
+      if (feature.properties._pcode === selPcode) return communeStyles.selectionne;
+      return communeStyles.attenue;
+    }
     if (!selPcode) return base;
+    const sel = STYLES_SEL_BASE[niveau];
     return feature.properties._pcode === selPcode
-      ? { ...STYLES_SEL[niveau] }
+      ? { ...sel }
       : { ...base, fillOpacity:0.04, opacity:0.2 };
-  }, []);
+  }, [couleurCommune, getStyleCommune]);
 
   const onEachRegion = useCallback((feature, layer) => {
     layer.on('click', () => onRegionClick?.(feature.properties._pcode));
@@ -245,7 +251,7 @@ export default function CarteV3({
 
   const onEachCommune = useCallback((feature, layer) => {
     layer.on('click', () => onCommuneClick?.(feature.properties._pcode));
-    layer.on('mouseover', () => layer.setStyle({weight:2.5,fillOpacity:0.55}));
+    layer.on('mouseover', () => layer.setStyle({weight:2.5, fillOpacity:0.55}));
     layer.on('mouseout',  () => layer.setStyle(styleF('communes', selCommune)(feature)));
   }, [selCommune, onCommuneClick, styleF]);
 
@@ -293,7 +299,7 @@ export default function CarteV3({
             style={styleF('arrondissements', selArr)} />
         )}
         {visCommunes && geoData.communes && (
-          <GeoJSON key={`com-${selCommune}-${geoData.communes.features.length}`}
+          <GeoJSON key={`com-${selCommune}-${couleurCommune}-${geoData.communes.features.length}`}
             data={geoData.communes}
             style={styleF('communes', selCommune)}
             onEachFeature={onEachCommune} />
@@ -317,7 +323,7 @@ export default function CarteV3({
           const isLine  = LIGNES_TH.has(id);
           return (
             <GeoJSON key={`th-${id}-${data.features.length}`} data={data}
-              style={f => ({
+              style={() => ({
                 color:couleur, weight:isLine?1.8:1,
                 fillColor:couleur, fillOpacity:isLine?0:0.4, opacity:0.9,
               })}
