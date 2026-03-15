@@ -1,9 +1,37 @@
 services:
+
+  # ── SERVICE 1 : API Flask (backend) ─────────────────────────────────────────
   - type: web
-    name: Carto-facileSN
+    name: carto-facilesn-api
     runtime: python
     buildCommand: pip install -r backend/requirements-render.txt && bash backend/build.sh
-    startCommand: cd backend && gunicorn "app:create_app()" --workers 2 --timeout 120
+    startCommand: cd backend && gunicorn "app:create_app()" --workers 2 --timeout 180 --bind 0.0.0.0:$PORT
     envVars:
       - key: PYTHON_VERSION
         value: "3.11"
+      - key: FLASK_ENV
+        value: production
+
+  # ── SERVICE 2 : Frontend React (site statique) ───────────────────────────────
+  - type: web
+    name: carto-facilesn-frontend
+    runtime: node
+    buildCommand: cd frontend && npm ci && npm run build
+    startCommand: cd frontend && npx serve -s build -l $PORT
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: REACT_APP_API_URL
+        value: https://carto-facilesn-api.onrender.com
+
+  # ── SERVICE 3 : Interface Streamlit (experts) ────────────────────────────────
+  - type: web
+    name: carto-facilesn-experts
+    runtime: python
+    buildCommand: pip install -r streamlit/requirements.txt
+    startCommand: streamlit run streamlit/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: API_URL
+        value: https://carto-facilesn-api.onrender.com
