@@ -35,15 +35,24 @@ def create_app():
 
         db.create_all()
 
+        # Préchauffage du cache GeoJSON au démarrage
+        try:
+            from services.geo_cache import prechauffer_cache
+            prechauffer_cache()
+        except Exception as e:
+            print(f'[app] Avertissement préchauffage cache: {e}')
+
     @app.route('/')
     def index():
         return jsonify({
-            'app': 'Carto-facileSN API', 'version': '1.0', 'statut': 'live',
+            'app': 'Carto-facileSN API', 'version': '2.0', 'statut': 'live',
             'endpoints': {
-                'regions':  '/api/communes/regions',
-                'communes': '/api/communes/liste',
-                'couches':  '/api/couches/catalogue',
-                'status':   '/admin/status',
+                'regions':            '/api/communes/regions',
+                'communes':           '/api/communes/liste',
+                'couches_catalogue':  '/api/couches/catalogue',
+                'geojson_admin':      '/api/couches/admin/{niveau}',
+                'geojson_thematique': '/api/couches/thematique/{couche}',
+                'status':             '/admin/status',
             }
         })
 
