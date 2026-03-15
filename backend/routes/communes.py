@@ -1,54 +1,57 @@
-from flask import Blueprint, jsonify, request
-from models.commune import Region, Departement, Commune
-from extensions import db
+"""Routes communes/départements/régions - 100% SHP, zéro base de données."""
+from flask import Blueprint, jsonify
+from services.admin_shp_service import (
+    get_regions,
+    get_departements_par_region,
+    get_communes_par_departement,
+    get_toutes_communes,
+    get_commune,
+    search_communes,
+)
+from flask import request
 
 communes_bp = Blueprint('communes', __name__)
 
 
 @communes_bp.route('/regions', methods=['GET'])
-def get_regions():
-    regions = Region.query.order_by(Region.nom).all()
-    return jsonify([r.to_dict() for r in regions])
+def api_regions():
+    return jsonify(get_regions())
 
 
 @communes_bp.route('/liste', methods=['GET'])
-def get_toutes_communes():
-    """Toutes les communes (sans geometrie pour performance)."""
-    communes = Commune.query.order_by(Commune.nom).all()
-    return jsonify([c.to_dict() for c in communes])
+def api_toutes_communes():
+    return jsonify(get_toutes_communes())
 
 
 @communes_bp.route('/search', methods=['GET'])
-def search_commune():
+def api_search():
     q = request.args.get('q', '')
-    communes = Commune.query.filter(Commune.nom.ilike(f'%{q}%')).limit(20).all()
-    return jsonify([c.to_dict() for c in communes])
+    return jsonify(search_communes(q))
 
 
 @communes_bp.route('/regions/<int:region_id>/departements', methods=['GET'])
-def get_departements(region_id):
-    deps = Departement.query.filter_by(region_id=region_id).order_by(Departement.nom).all()
-    return jsonify([d.to_dict() for d in deps])
+def api_departements(region_id):
+    deps = get_departements_par_region(region_id)
+    return jsonify(deps)
 
 
 @communes_bp.route('/departements/<int:dep_id>/communes', methods=['GET'])
-def get_communes_dep(dep_id):
-    communes = Commune.query.filter_by(departement_id=dep_id).order_by(Commune.nom).all()
-    return jsonify([c.to_dict() for c in communes])
+def api_communes_dep(dep_id):
+    return jsonify(get_communes_par_departement(dep_id))
 
 
 @communes_bp.route('/<int:commune_id>', methods=['GET'])
-def get_commune(commune_id):
-    commune = Commune.query.get_or_404(commune_id)
-    data = commune.to_dict()
-    data['geom'] = commune.geom
-    # Enrichir avec departement et region
-    try:
-        dep = Departement.query.get(commune.departement_id)
-        if dep:
-            data['departement_nom'] = dep.nom
-            reg = Region.query.get(dep.region_id)
-            data['region_nom'] = reg.nom if reg else None
-    except Exception:
-        pass
+def api_commune(commune_id):
+    c = get_commune(commune_id)
+    if c is None:
+        return jsonify({'erreur': 'Commune introuvable'}), 404
+    data = dict(c)  # inclut geom
+    # Enrichir avec noms département et région
+    from services.admin_shp_service import _CACHE, _build_cache
+    _build_cache()
+    dep = next((d for d in _CACHE['departements'] if d['id'] == c['departement_id']), None)
+    if dep:
+        data['departement_nom'] = dep['nom']
+        reg = next((r for r in _CACHE['regions'] if r['id'] == dep['region_id']), None)
+        data['region_nom'] = reg['nom'] if reg else ''
     return jsonify(data)
