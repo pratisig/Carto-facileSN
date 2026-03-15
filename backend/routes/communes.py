@@ -12,6 +12,7 @@ from services.admin_shp_service import (
     get_arrondissement,
     search_communes,
     search_arrondissements,
+    _CACHE, _build_cache,
 )
 
 communes_bp = Blueprint('communes', __name__)
@@ -37,9 +38,29 @@ def api_communes_dep(dep_id):
     return jsonify(get_communes_par_departement(dep_id))
 
 
+@communes_bp.route('/departements/<int:dep_id>/geom', methods=['GET'])
+def api_dep_geom(dep_id):
+    """Retourne un département avec sa géométrie pour affichage carte."""
+    _build_cache()
+    dep = next((d for d in _CACHE['departements'] if d['id'] == dep_id), None)
+    if dep is None:
+        return jsonify({'erreur': 'Département introuvable'}), 404
+    return jsonify(dep)
+
+
 @communes_bp.route('/arrondissements/<int:arr_id>/communes', methods=['GET'])
 def api_communes_arr(arr_id):
     return jsonify(get_communes_par_arrondissement(arr_id))
+
+
+@communes_bp.route('/arrondissements/<int:arr_id>/geom', methods=['GET'])
+def api_arr_geom(arr_id):
+    """Retourne un arrondissement avec sa géométrie pour affichage carte."""
+    _build_cache()
+    arr = next((a for a in _CACHE['arrondissements'] if a['id'] == arr_id), None)
+    if arr is None:
+        return jsonify({'erreur': 'Arrondissement introuvable'}), 404
+    return jsonify(arr)
 
 
 @communes_bp.route('/liste', methods=['GET'])
@@ -70,7 +91,6 @@ def api_commune(commune_id):
     if c is None:
         return jsonify({'erreur': 'Commune introuvable'}), 404
     data = dict(c)
-    from services.admin_shp_service import _CACHE, _build_cache
     _build_cache()
     dep = next((d for d in _CACHE['departements'] if d['id'] == c['departement_id']), None)
     if dep:
@@ -89,7 +109,6 @@ def api_arrondissement(arr_id):
     if a is None:
         return jsonify({'erreur': 'Arrondissement introuvable'}), 404
     data = dict(a)
-    from services.admin_shp_service import _CACHE, _build_cache
     _build_cache()
     dep = next((d for d in _CACHE['departements'] if d['id'] == a['departement_id']), None)
     if dep:
