@@ -10,32 +10,31 @@ import './App.css';
 const API = process.env.REACT_APP_API_URL || 'https://carto-facilesn-api.onrender.com';
 
 const CATALOGUE = [
-  { groupe: 'Transport',   id: 'routes',          label: 'Reseau routier',     couleur: '#888888', icon: '\u{1F6E3}' },
-  { groupe: 'Transport',   id: 'chemin_fer',       label: 'Chemins de fer',     couleur: '#444444', icon: '\u{1F682}' },
-  { groupe: 'Transport',   id: 'aeroports',        label: 'Aeroports',          couleur: '#2c3e50', icon: '\u2708' },
-  { groupe: 'Hydrologie',  id: 'cours_eau',        label: "Cours d'eau",        couleur: '#2980b9', icon: '\u{1F4A7}' },
-  { groupe: 'Hydrologie',  id: 'plans_eau',        label: "Plans d'eau",        couleur: '#85c1e9', icon: '\u{1F30A}' },
-  { groupe: 'Hydrologie',  id: 'points_eau',       label: "Points d'eau",       couleur: '#1a6fa0', icon: '\u{1F6B0}' },
-  { groupe: 'Vegetation',  id: 'aires_protegees',  label: 'Aires protegees',    couleur: '#1e8449', icon: '\u{1F33F}' },
-  { groupe: 'Vegetation',  id: 'surfaces_boisees', label: 'Surfaces boisees',   couleur: '#27ae60', icon: '\u{1F332}' },
-  { groupe: 'Terrain',     id: 'courbes_niveau',   label: 'Courbes de niveau',  couleur: '#b7950b', icon: '\u{1F3D4}' },
-  { groupe: 'Terrain',     id: 'sable',            label: 'Zones sableuses',    couleur: '#d4ac0d', icon: '\u{1F3DC}' },
-  { groupe: 'Population',  id: 'agglomerations',   label: 'Agglomerations',     couleur: '#e67e22', icon: '\u{1F3D9}' },
-  { groupe: 'Population',  id: 'localites',        label: 'Localites',          couleur: '#c0392b', icon: '\u{1F3D8}' },
-  { groupe: 'Frontieres',  id: 'frontieres',       label: 'Frontieres',         couleur: '#2c3e50', icon: '\u{1F5FA}' },
+  { groupe: 'Transport',  id: 'routes',         label: 'Reseau routier',    couleur: '#888888', icon: '\u{1F6E3}' },
+  { groupe: 'Transport',  id: 'chemin_fer',      label: 'Chemins de fer',    couleur: '#444444', icon: '\u{1F682}' },
+  { groupe: 'Transport',  id: 'aeroports',       label: 'Aeroports',         couleur: '#2c3e50', icon: '\u2708' },
+  { groupe: 'Hydrologie', id: 'cours_eau',       label: "Cours d'eau",       couleur: '#2980b9', icon: '\u{1F4A7}' },
+  { groupe: 'Hydrologie', id: 'plans_eau',       label: "Plans d'eau",       couleur: '#85c1e9', icon: '\u{1F30A}' },
+  { groupe: 'Hydrologie', id: 'points_eau',      label: "Points d'eau",      couleur: '#1a6fa0', icon: '\u{1F6B0}' },
+  { groupe: 'Vegetation', id: 'aires_protegees', label: 'Aires protegees',   couleur: '#1e8449', icon: '\u{1F33F}' },
+  { groupe: 'Vegetation', id: 'surfaces_boisees',label: 'Surfaces boisees',  couleur: '#27ae60', icon: '\u{1F332}' },
+  { groupe: 'Terrain',    id: 'courbes_niveau',  label: 'Courbes de niveau', couleur: '#b7950b', icon: '\u{1F3D4}' },
+  { groupe: 'Terrain',    id: 'sable',           label: 'Zones sableuses',   couleur: '#d4ac0d', icon: '\u{1F3DC}' },
+  { groupe: 'Population', id: 'agglomerations',  label: 'Agglomerations',    couleur: '#e67e22', icon: '\u{1F3D9}' },
+  { groupe: 'Population', id: 'localites',       label: 'Localites',         couleur: '#c0392b', icon: '\u{1F3D8}' },
+  { groupe: 'Frontieres', id: 'frontieres',      label: 'Frontieres',        couleur: '#2c3e50', icon: '\u{1F5FA}' },
 ];
 
 export default function App() {
   const {
-    geoData, chargement, erreur,
-    getRegions, getDepartements, getArrondissements, getCommunes,
-    getFeatureByPcode,
+    geoData, chargement, erreur, apiUrl,
+    getRegions, getDepartements, getArrondissements, getCommunes, getFeatureByPcode,
   } = useGeoData();
 
-  const [selRegion,   setSelRegion]   = useState('');
-  const [selDep,      setSelDep]      = useState('');
-  const [selArr,      setSelArr]      = useState('');
-  const [selCommune,  setSelCommune]  = useState('');
+  const [selRegion,  setSelRegion]  = useState('');
+  const [selDep,     setSelDep]     = useState('');
+  const [selArr,     setSelArr]     = useState('');
+  const [selCommune, setSelCommune] = useState('');
 
   const [visRegions,    setVisRegions]    = useState(true);
   const [visDeps,       setVisDeps]       = useState(true);
@@ -43,9 +42,9 @@ export default function App() {
   const [visCommunes,   setVisCommunes]   = useState(true);
   const [visEtiquettes, setVisEtiquettes] = useState(true);
 
-  const [couchesActives,      setCouchesActives]      = useState(['routes', 'cours_eau']);
-  const [geojsonThematiques,  setGeojsonThematiques]  = useState({});
-  const [loadingCouche,       setLoadingCouche]       = useState(false);
+  const [couchesActives,     setCouchesActives]     = useState(['routes', 'cours_eau']);
+  const [geojsonThematiques, setGeojsonThematiques] = useState({});
+  const [loadingCouche,      setLoadingCouche]      = useState(false);
 
   const [importData, setImportData] = useState(null);
   const [showExport, setShowExport] = useState(false);
@@ -57,15 +56,15 @@ export default function App() {
   const arrondissements = getArrondissements(selDep);
   const communes        = getCommunes(selArr);
 
-  const featRegion  = selRegion  ? getFeatureByPcode('regions',         selRegion)  : null;
-  const featDep     = selDep     ? getFeatureByPcode('departements',     selDep)     : null;
-  const featArr     = selArr     ? getFeatureByPcode('arrondissements',  selArr)     : null;
-  const featCommune = selCommune ? getFeatureByPcode('communes',         selCommune) : null;
+  const featRegion  = selRegion  ? getFeatureByPcode('regions',        selRegion)  : null;
+  const featDep     = selDep     ? getFeatureByPcode('departements',    selDep)     : null;
+  const featArr     = selArr     ? getFeatureByPcode('arrondissements', selArr)     : null;
+  const featCommune = selCommune ? getFeatureByPcode('communes',        selCommune) : null;
 
   const onRegionChange  = useCallback(v => { setSelRegion(v); setSelDep(''); setSelArr(''); setSelCommune(''); }, []);
   const onDepChange     = useCallback(v => { setSelDep(v);    setSelArr(''); setSelCommune(''); }, []);
   const onArrChange     = useCallback(v => { setSelArr(v);    setSelCommune(''); }, []);
-  const onCommuneChange = useCallback(v => { setSelCommune(v); }, []);
+  const onCommuneChange = useCallback(v => setSelCommune(v), []);
   const onReset         = useCallback(() => { setSelRegion(''); setSelDep(''); setSelArr(''); setSelCommune(''); }, []);
 
   const chargerCouche = useCallback(async (id) => {
@@ -80,9 +79,7 @@ export default function App() {
   }, [geojsonThematiques]);
 
   const toggleCouche = useCallback((id) => {
-    setCouchesActives(prev =>
-      prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
-    );
+    setCouchesActives(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
     chargerCouche(id);
   }, [chargerCouche]);
 
@@ -126,19 +123,37 @@ export default function App() {
   return (
     <div className="app-container">
       <Header />
-      {chargement && <div className="banniere-info">⏳ Chargement des couches administratives...</div>}
-      {erreur    && <div className="banniere-erreur">⚠️ {erreur}</div>}
+
+      {/* Banniere chargement / erreur */}
+      {chargement && (
+        <div className="banniere-info">
+          ⏳ Connexion a l'API... ({apiUrl})
+        </div>
+      )}
+      {!chargement && erreur && (
+        <div className="banniere-erreur">
+          {erreur}
+          {erreur.includes('introuvable') && (
+            <span style={{marginLeft:12, fontSize:'0.78rem'}}>
+              → Verifie le nom exact de ton service API sur 
+              <a href="https://dashboard.render.com" target="_blank" rel="noreferrer"
+                 style={{color:'#c0392b', fontWeight:700}}>dashboard.render.com</a>
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="main-layout">
         <PanneauGauche
-          regions={regions}  departements={departements}
+          regions={regions}          departements={departements}
           arrondissements={arrondissements}  communes={communes}
-          selRegion={selRegion}  selDep={selDep}
-          selArr={selArr}        selCommune={selCommune}
-          onRegionChange={onRegionChange}  onDepChange={onDepChange}
-          onArrChange={onArrChange}        onCommuneChange={onCommuneChange}
+          selRegion={selRegion}      selDep={selDep}
+          selArr={selArr}            selCommune={selCommune}
+          onRegionChange={onRegionChange}    onDepChange={onDepChange}
+          onArrChange={onArrChange}          onCommuneChange={onCommuneChange}
           onReset={onReset}
-          featRegion={featRegion}  featDep={featDep}
-          featArr={featArr}        featCommune={featCommune}
+          featRegion={featRegion}    featDep={featDep}
+          featArr={featArr}          featCommune={featCommune}
           visRegions={visRegions}    setVisRegions={setVisRegions}
           visDeps={visDeps}          setVisDeps={setVisDeps}
           visArrs={visArrs}          setVisArrs={setVisArrs}
@@ -149,27 +164,24 @@ export default function App() {
           onImportClear={clearImport}
           onExportClick={() => setShowExport(true)}
           loading={chargement || loadingCouche}
+          apiUrl={apiUrl}
         />
-        <input
-          ref={inputImportRef}  type="file"
-          accept=".geojson,.json,.csv,.kml"
-          style={{ display: 'none' }}
-          onChange={handleImportFile}
-        />
+        <input ref={inputImportRef} type="file" accept=".geojson,.json,.csv"
+          style={{ display: 'none' }} onChange={handleImportFile} />
         <CarteV3
           geoData={geoData}
-          featRegion={featRegion}   featDep={featDep}
-          featArr={featArr}         featCommune={featCommune}
-          visRegions={visRegions}   visDeps={visDeps}
-          visArrs={visArrs}         visCommunes={visCommunes}
+          featRegion={featRegion}    featDep={featDep}
+          featArr={featArr}          featCommune={featCommune}
+          visRegions={visRegions}    visDeps={visDeps}
+          visArrs={visArrs}          visCommunes={visCommunes}
           visEtiquettes={visEtiquettes}
           geojsonThematiques={geojsonThematiques}
           couchesActives={couchesActives}
           catalogue={CATALOGUE}
           importData={importData}
           chargement={chargement}
-          selRegion={selRegion}  selDep={selDep}
-          selArr={selArr}        selCommune={selCommune}
+          selRegion={selRegion}      selDep={selDep}
+          selArr={selArr}            selCommune={selCommune}
           onRegionClick={onRegionChange}
           onDepClick={onDepChange}
           onCommuneClick={onCommuneChange}
@@ -190,8 +202,8 @@ export default function App() {
           featRegion={featRegion}  featDep={featDep}
           featArr={featArr}        featCommune={featCommune}
           geoData={geoData}
-          titre={`Carte ${featCommune?.properties?._nom || featArr?.properties?._nom || featDep?.properties?._nom || featRegion?.properties?._nom || 'administrative du Sénégal'}`}
-          sousTitre={featRegion ? `Région de ${featRegion.properties._nom}` : ''}
+          titre={`Carte ${featCommune?.properties?._nom || featArr?.properties?._nom || featDep?.properties?._nom || featRegion?.properties?._nom || 'administrative du Senegal'}`}
+          sousTitre={featRegion ? `Region de ${featRegion.properties._nom}` : ''}
         />
       )}
     </div>

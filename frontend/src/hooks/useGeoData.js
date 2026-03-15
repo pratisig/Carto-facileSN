@@ -1,53 +1,84 @@
 /**
- * Hook central : charge les 4 GeoJSON admin UNE SEULE FOIS
- * et filtre 100% en memoire par la propriete _pcode normalisee.
- *
- * Proprietes normalisees par le backend (geo_cache.py) :
- *   _pcode        : PCODE propre du polygone
- *   _pcode_region : PCODE de la region parente  (Admin2, 3, 4)
- *   _pcode_dep    : PCODE du dep parent          (Admin3, 4)
- *   _pcode_arr    : PCODE de l'arr parent         (Admin4)
- *   _nom          : nom normalise
+ * Hook central — charge les 4 GeoJSON admin avec retry automatique.
+ * Affiche l'URL testee pour faciliter le debug.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const API = process.env.REACT_APP_API_URL || 'https://carto-facilesn-api.onrender.com';
 
+const MAX_RETRIES = 5;
+const RETRY_DELAY = 8000; // 8 secondes entre chaque essai
+
+async function fetchAvecTimeout(url, timeoutMs = 20000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function useGeoData() {
   const [geoData, setGeoData] = useState({
-    regions: null,
-    departements: null,
-    arrondissements: null,
-    communes: null,
+    regions: null, departements: null, arrondissements: null, communes: null,
   });
-  const [chargement, setChargement] = useState(true);
-  const [erreur, setErreur] = useState('');
+  const [chargement, setChargement]   = useState(true);
+  const [erreur,     setErreur]       = useState('');
+  const [tentative,  setTentative]    = useState(0);
+  const [apiUrl,     setApiUrl]       = useState(API);
+  const retryTimer = useRef(null);
 
   useEffect(() => {
-    const charger = async () => {
+    let annule = false;
+    setApiUrl(API); // expose l'URL pour debug
+
+    const charger = async (essai = 0) => {
+      if (annule) return;
       try {
         setChargement(true);
+        if (essai > 0) {
+          setErreur(`⏳ API en demarrage... tentative ${essai}/${MAX_RETRIES} — ${API}`);
+        }
+        setTentative(essai);
+
         const [regions, departements, arrondissements, communes] = await Promise.all([
-          fetch(`${API}/api/couches/admin/regions`).then(r => r.json()),
-          fetch(`${API}/api/couches/admin/departements`).then(r => r.json()),
-          fetch(`${API}/api/couches/admin/arrondissements`).then(r => r.json()),
-          fetch(`${API}/api/couches/admin/communes`).then(r => r.json()),
+          fetchAvecTimeout(`${API}/api/couches/admin/regions`),
+          fetchAvecTimeout(`${API}/api/couches/admin/departements`),
+          fetchAvecTimeout(`${API}/api/couches/admin/arrondissements`),
+          fetchAvecTimeout(`${API}/api/couches/admin/communes`),
         ]);
+
+        if (annule) return;
         setGeoData({ regions, departements, arrondissements, communes });
         setErreur('');
-      } catch (e) {
-        setErreur('Serveur en demarrage... Rechargez dans 30s');
-      } finally {
         setChargement(false);
+      } catch (e) {
+        if (annule) return;
+        if (essai < MAX_RETRIES) {
+          setErreur(`⚠️ API inaccessible (${API}) — nouvelle tentative dans ${RETRY_DELAY/1000}s... (${essai+1}/${MAX_RETRIES})`);
+          setChargement(false);
+          retryTimer.current = setTimeout(() => charger(essai + 1), RETRY_DELAY);
+        } else {
+          setErreur(`❌ API introuvable apres ${MAX_RETRIES} tentatives. URL testee : ${API} — Verifie le nom du service Render.`);
+          setChargement(false);
+        }
       }
     };
-    charger();
+
+    charger(0);
+    return () => {
+      annule = true;
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+    };
   }, []);
 
-  // ── Helpers filtrage par _pcode (100% memoire) ────────────────────────────
+  // ── Helpers filtrage PCODE ────────────────────────────────────────────────
 
   const getRegions = useCallback(() => {
-    if (!geoData.regions) return [];
+    if (!geoData.regions?.features) return [];
     return geoData.regions.features
       .filter(f => f.properties._nom)
       .map(f => ({
@@ -59,7 +90,7 @@ export function useGeoData() {
   }, [geoData.regions]);
 
   const getDepartements = useCallback((pcode_region) => {
-    if (!geoData.departements || !pcode_region) return [];
+    if (!geoData.departements?.features || !pcode_region) return [];
     return geoData.departements.features
       .filter(f => f.properties._pcode_region === pcode_region)
       .map(f => ({
@@ -71,7 +102,7 @@ export function useGeoData() {
   }, [geoData.departements]);
 
   const getArrondissements = useCallback((pcode_dep) => {
-    if (!geoData.arrondissements || !pcode_dep) return [];
+    if (!geoData.arrondissements?.features || !pcode_dep) return [];
     return geoData.arrondissements.features
       .filter(f => f.properties._pcode_dep === pcode_dep)
       .map(f => ({
@@ -83,7 +114,7 @@ export function useGeoData() {
   }, [geoData.arrondissements]);
 
   const getCommunes = useCallback((pcode_arr) => {
-    if (!geoData.communes || !pcode_arr) return [];
+    if (!geoData.communes?.features || !pcode_arr) return [];
     return geoData.communes.features
       .filter(f => f.properties._pcode_arr === pcode_arr)
       .map(f => ({
@@ -101,13 +132,7 @@ export function useGeoData() {
   }, [geoData]);
 
   return {
-    geoData,
-    chargement,
-    erreur,
-    getRegions,
-    getDepartements,
-    getArrondissements,
-    getCommunes,
-    getFeatureByPcode,
+    geoData, chargement, erreur, apiUrl, tentative,
+    getRegions, getDepartements, getArrondissements, getCommunes, getFeatureByPcode,
   };
 }
