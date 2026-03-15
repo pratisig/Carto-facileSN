@@ -7,11 +7,9 @@ from config import Config
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
-
-    # CORS ouvert pour tous les origines (frontend Netlify/Vercel)
-    CORS(app, resources={r"/api/*": {"origins": "*"}},
+    CORS(app, resources={r"/api/*": {"origins": "*"},
+                         r"/admin/*": {"origins": "*"}},
          supports_credentials=False)
-
     db.init_app(app)
 
     with app.app_context():
@@ -24,6 +22,7 @@ def create_app():
         from routes.utilisateurs import utilisateurs_bp
         from routes.couches import couches_bp
         from routes.ocsol import ocsol_bp
+        from routes.admin import admin_bp
 
         app.register_blueprint(communes_bp,     url_prefix='/api/communes')
         app.register_blueprint(cartes_bp,       url_prefix='/api/cartes')
@@ -32,22 +31,19 @@ def create_app():
         app.register_blueprint(utilisateurs_bp, url_prefix='/api/utilisateurs')
         app.register_blueprint(couches_bp,      url_prefix='/api/couches')
         app.register_blueprint(ocsol_bp,        url_prefix='/api/ocsol')
+        app.register_blueprint(admin_bp,        url_prefix='/admin')
 
         db.create_all()
 
     @app.route('/')
     def index():
         return jsonify({
-            'app': 'Carto-facileSN API',
-            'version': '1.0',
-            'statut': 'live',
+            'app': 'Carto-facileSN API', 'version': '1.0', 'statut': 'live',
             'endpoints': {
                 'regions':  '/api/communes/regions',
                 'communes': '/api/communes/liste',
                 'couches':  '/api/couches/catalogue',
-                'ocsol':    '/api/ocsol/catalogue',
-                'cartes':   '/api/cartes/',
-                'exports':  '/api/exports/',
+                'status':   '/admin/status',
             }
         })
 
