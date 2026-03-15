@@ -10,15 +10,16 @@ const API = process.env.REACT_APP_API_URL || 'https://carto-facilesn.onrender.co
 const api = axios.create({ baseURL: API, timeout: 60000 });
 
 export default function App() {
-  const [regions, setRegions]       = useState([]);
-  const [departements, setDepartements] = useState([]);
-  const [communes, setCommunes]     = useState([]);
+  const [regions, setRegions]               = useState([]);
+  const [departements, setDepartements]     = useState([]);
+  const [arrondissements, setArrondissements] = useState([]);
+  const [communes, setCommunes]             = useState([]);
   const [communeSelectionnee, setCommuneSelectionnee] = useState(null);
   const [couchesActives, setCouchesActives] = useState(['routes', 'cours_eau']);
   const [catalogueCouches, setCatalogueCouches] = useState([]);
   const [geojsonCouches, setGeojsonCouches] = useState({});
-  const [loading, setLoading]       = useState(false);
-  const [erreur, setErreur]         = useState('');
+  const [loading, setLoading]               = useState(false);
+  const [erreur, setErreur]                 = useState('');
 
   useEffect(() => {
     api.get('/api/communes/regions')
@@ -30,8 +31,8 @@ export default function App() {
   }, []);
 
   const onRegionChange = (rid) => {
-    // rid est toujours une string venant du <select>
     setDepartements([]);
+    setArrondissements([]);
     setCommunes([]);
     setCommuneSelectionnee(null);
     setGeojsonCouches({});
@@ -44,12 +45,25 @@ export default function App() {
   };
 
   const onDepChange = (did) => {
+    setArrondissements([]);
     setCommunes([]);
     setCommuneSelectionnee(null);
     setGeojsonCouches({});
     if (!did) return;
     setLoading(true);
-    api.get(`/api/communes/departements/${did}/communes`)
+    api.get(`/api/communes/departements/${did}/arrondissements`)
+      .then(r => { setArrondissements(r.data); setErreur(''); })
+      .catch(() => setErreur('Erreur chargement arrondissements'))
+      .finally(() => setLoading(false));
+  };
+
+  const onArrChange = (aid) => {
+    setCommunes([]);
+    setCommuneSelectionnee(null);
+    setGeojsonCouches({});
+    if (!aid) return;
+    setLoading(true);
+    api.get(`/api/communes/arrondissements/${aid}/communes`)
       .then(r => { setCommunes(r.data); setErreur(''); })
       .catch(() => setErreur('Erreur chargement communes'))
       .finally(() => setLoading(false));
@@ -101,9 +115,13 @@ export default function App() {
       )}
       <div className="main-layout">
         <PanneauGauche
-          regions={regions} departements={departements} communes={communes}
+          regions={regions}
+          departements={departements}
+          arrondissements={arrondissements}
+          communes={communes}
           onRegionChange={onRegionChange}
           onDepChange={onDepChange}
+          onArrChange={onArrChange}
           onCommuneChange={onCommuneChange}
           communeSelectionnee={communeSelectionnee}
           loading={loading}

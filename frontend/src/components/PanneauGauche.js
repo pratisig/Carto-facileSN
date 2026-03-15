@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 
 export default function PanneauGauche({
-  regions, departements, communes,
-  onRegionChange, onDepChange, onCommuneChange,
+  regions, departements, arrondissements, communes,
+  onRegionChange, onDepChange, onArrChange, onCommuneChange,
   communeSelectionnee, loading
 }) {
   const [debug, setDebug] = useState([]);
@@ -10,17 +10,22 @@ export default function PanneauGauche({
   const log = (msg) => setDebug(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev.slice(0, 4)]);
 
   const handleRegion = (val) => {
-    log(`Region selectionee: id=${val}`);
+    log(`Région sélectionnée: id=${val}`);
     onRegionChange(val);
   };
 
   const handleDep = (val) => {
-    log(`Dep selectionne: id=${val}`);
+    log(`Département sélectionné: id=${val}`);
     onDepChange(val);
   };
 
+  const handleArr = (val) => {
+    log(`Arrondissement sélectionné: id=${val}`);
+    onArrChange(val);
+  };
+
   const handleCommune = (val) => {
-    log(`Commune selectionnee: id=${val}`);
+    log(`Commune sélectionnée: id=${val}`);
     onCommuneChange(val);
   };
 
@@ -41,6 +46,13 @@ export default function PanneauGauche({
         {departements.map(d => <option key={d.id} value={String(d.id)}>{d.nom}</option>)}
       </select>
 
+      <label className="select-label">Arrondissement ({arrondissements.length} chargés)</label>
+      <select className="select-field" defaultValue="" onChange={e => handleArr(e.target.value)}
+        disabled={arrondissements.length === 0}>
+        <option value="">-- Choisir --</option>
+        {arrondissements.map(a => <option key={a.id} value={String(a.id)}>{a.nom}</option>)}
+      </select>
+
       <label className="select-label">Commune ({communes.length} chargées)</label>
       <select className="select-field" defaultValue="" onChange={e => handleCommune(e.target.value)}
         disabled={communes.length === 0}>
@@ -50,7 +62,6 @@ export default function PanneauGauche({
 
       {loading && <div style={{fontSize:'0.78rem', color:'#1a5276', marginTop:4}}>⏳ Chargement...</div>}
 
-      {/* Zone debug visible */}
       {debug.length > 0 && (
         <div style={{marginTop:8, background:'#f0f8ff', borderRadius:6,
           padding:'6px 8px', fontSize:'0.7rem', color:'#333', fontFamily:'monospace'}}>
@@ -62,6 +73,7 @@ export default function PanneauGauche({
         <div className="info-commune">
           <div className="nom">{communeSelectionnee.nom}</div>
           <div className="detail">
+            {communeSelectionnee.arrondissement_nom && <div>🏘️ {communeSelectionnee.arrondissement_nom}</div>}
             {communeSelectionnee.departement_nom && <div>📍 {communeSelectionnee.departement_nom}</div>}
             {communeSelectionnee.region_nom && <div>🏞️ {communeSelectionnee.region_nom}</div>}
             {communeSelectionnee.population && <div>👥 {communeSelectionnee.population.toLocaleString('fr-FR')} hab.</div>}
