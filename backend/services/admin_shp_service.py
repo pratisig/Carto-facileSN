@@ -1,6 +1,5 @@
-"""Lecture des limites administratives depuis les SHP SEN_Admin1 a 4.
-
-La colonne de nom est NAME_LOCAL pour les 4 niveaux.
+"""Lecture des limites administratives SHP SEN_Admin1..4.
+Colonne NOM = NAME_LOCAL (en premier dans NOM_COLS).
 """
 import os
 import json
@@ -15,14 +14,14 @@ SHP_ADMIN2 = 'SEN_Admin2'
 SHP_ADMIN3 = 'SEN_Admin3'
 SHP_ADMIN4 = 'SEN_Admin4'
 
-# Candidats NOM — NAME_LOCAL en premier
-NOM_COLS    = ['NAME_LOCAL', 'NOM', 'NAME', 'ADM1_FR', 'ADM2_FR', 'ADM3_FR', 'ADM4_FR',
-               'ADM1_EN', 'ADM2_EN', 'ADM3_EN', 'ADM4_EN',
-               'REGION', 'DEPARTEMEN', 'ARRONDISSE', 'COMMUNE']
-PCODE_COLS  = ['PCODE', 'ADM1_PCODE', 'ADM2_PCODE', 'ADM3_PCODE', 'ADM4_PCODE', 'CODE']
-P1_COLS     = ['ADMIN1_PCO', 'ADM1_PCODE']
-P2_COLS     = ['ADMIN2_PCO', 'ADM2_PCODE']
-P3_COLS     = ['ADMIN3_PCO', 'ADM3_PCODE']
+# NAME_LOCAL EN PREMIER — colonne confirmee pour tous les niveaux
+NOM_COLS   = ['NAME_LOCAL', 'NOM', 'NAME', 'ADM1_FR', 'ADM2_FR', 'ADM3_FR', 'ADM4_FR',
+              'ADM1_EN', 'ADM2_EN', 'ADM3_EN', 'ADM4_EN',
+              'REGION', 'DEPARTEMEN', 'ARRONDISSE', 'COMMUNE']
+PCODE_COLS = ['PCODE', 'ADM1_PCODE', 'ADM2_PCODE', 'ADM3_PCODE', 'ADM4_PCODE', 'CODE']
+P1_COLS    = ['ADMIN1_PCO', 'ADM1_PCODE']
+P2_COLS    = ['ADMIN2_PCO', 'ADM2_PCODE']
+P3_COLS    = ['ADMIN3_PCO', 'ADM3_PCODE']
 
 
 def _decode(v):
@@ -39,15 +38,6 @@ def _title(s):
     return ' '.join(w.capitalize() for w in s.strip().split())
 
 
-def _norm(s):
-    if not s: return ''
-    s = s.strip().lower()
-    for a, b in [('\u00e9','e'),('\u00e8','e'),('\u00ea','e'),('\u00e0','a'),('\u00e2','a'),
-                 ('\u00f4','o'),('\u00f9','u'),('\u00fb','u'),('\u00ee','i'),('\u00e7','c')]:
-        s = s.replace(a, b)
-    return s
-
-
 def _col(fields, candidats):
     upper = {f.upper(): f for f in (fields or [])}
     for c in candidats:
@@ -59,8 +49,9 @@ def _col(fields, candidats):
 def _lire_shp(nom):
     chemin = os.path.join(DATA_DIR, f'{nom}.shp')
     if not os.path.exists(chemin):
-        print(f'[admin_shp_service] Fichier introuvable: {chemin}')
+        print(f'[SHP] Introuvable: {chemin}')
         return None, []
+    # Lire encodage depuis .CPG
     cpg = chemin.replace('.shp', '.CPG')
     if not os.path.exists(cpg):
         cpg = chemin.replace('.shp', '.cpg')
@@ -78,83 +69,77 @@ def _lire_shp(nom):
             try:    geom = json.dumps(sr.shape.__geo_interface__)
             except: geom = None
             records.append({'attrs': attrs, 'geom': geom})
+        print(f'[SHP] {nom}: {len(records)} records | cols: {fields}')
         return fields, records
     except Exception as e:
-        print(f'[admin_shp_service] Erreur lecture {nom}: {e}')
+        print(f'[SHP] Erreur {nom}: {e}')
         return None, []
 
 
-# ── Cache memoire ────────────────────────────────────────────────────────────
-_CACHE = {}
-
-
 def _get_nom(attrs, fields):
+    """Extrait le nom reel depuis NAME_LOCAL en priorite."""
     c = _col(fields, NOM_COLS)
     if c:
         v = _title(_decode(attrs.get(c, '')))
         if v and v.lower() not in ('nan', 'none', ''): return v
-    # fallback: premiere colonne string non vide
+    # Fallback: premiere colonne string non vide
     for k, v in attrs.items():
         v2 = _decode(v)
-        if v2 and v2.lower() not in ('nan', 'none') and len(v2) > 1:
+        if v2 and v2.lower() not in ('nan', 'none') and len(v2) > 2:
             return _title(v2)
     return ''
 
 
+# ─ Cache memoire (mutable, vidable avec .clear()) ─────────────────────────────
+_CACHE = {}
+
+
 def _build_cache():
-    global _CACHE
+    """Reconstruit le cache depuis les SHP. Idempotent si cache non vide."""
     if _CACHE: return
 
-    def build_level(shp_name, label):
+    def load(shp_name, label, p_fields):
         fields, recs = _lire_shp(shp_name)
         if not fields:
             return [], {}
-        print(f'[admin_shp_service] {shp_name} colonnes: {fields}')
-        c_pcode  = _col(fields, PCODE_COLS)
-        c_p1     = _col(fields, P1_COLS)
-        c_p2     = _col(fields, P2_COLS)
-        c_p3     = _col(fields, P3_COLS)
+        c_pcode = _col(fields, PCODE_COLS)
+        c_p = {k: _col(fields, v) for k, v in p_fields.items()}
         items = []
         for i, e in enumerate(recs, start=1):
             nom   = _get_nom(e['attrs'], fields) or f'{label} {i}'
             pcode = _decode(e['attrs'].get(c_pcode, str(i))) if c_pcode else str(i)
-            items.append({
-                'id': i, 'nom': nom, 'pcode': pcode, 'code': pcode,
-                'pcode_region': _decode(e['attrs'].get(c_p1,'')) if c_p1 else '',
-                'pcode_dep':    _decode(e['attrs'].get(c_p2,'')) if c_p2 else '',
-                'pcode_arr':    _decode(e['attrs'].get(c_p3,'')) if c_p3 else '',
-                'geom': e['geom'], 'attrs': e['attrs'],
-            })
+            item  = {'id': i, 'nom': nom, 'pcode': pcode, 'code': pcode,
+                     'geom': e['geom'], 'attrs': e['attrs']}
+            for k, col in c_p.items():
+                item[k] = _decode(e['attrs'].get(col, '')) if col else ''
+            items.append(item)
         idx = {it['pcode']: it['id'] for it in items}
+        if items:
+            print(f'[SHP] {shp_name}: {len(items)} items | ex: {items[0]["nom"]} / {items[0]["pcode"]}')
         return items, idx
 
-    regs,  reg_idx  = build_level(SHP_ADMIN1, 'Region')
-    deps,  dep_idx  = build_level(SHP_ADMIN2, 'Departement')
-    arrs,  arr_idx  = build_level(SHP_ADMIN3, 'Arrondissement')
-    coms,  com_idx  = build_level(SHP_ADMIN4, 'Commune')
+    regs,  reg_idx  = load(SHP_ADMIN1, 'Region',         {})
+    deps,  dep_idx  = load(SHP_ADMIN2, 'Departement',    {'pcode_region': P1_COLS})
+    arrs,  arr_idx  = load(SHP_ADMIN3, 'Arrondissement', {'pcode_region': P1_COLS, 'pcode_dep': P2_COLS})
+    coms,  _        = load(SHP_ADMIN4, 'Commune',        {'pcode_region': P1_COLS, 'pcode_dep': P2_COLS, 'pcode_arr': P3_COLS})
 
-    # Lier les IDs parents
+    # Liaison IDs parents
     for d in deps:
-        d['region_id'] = reg_idx.get(d['pcode_region'], regs[0]['id'] if regs else 1)
+        d['region_id'] = reg_idx.get(d.get('pcode_region',''), regs[0]['id'] if regs else 1)
     for a in arrs:
-        a['departement_id'] = dep_idx.get(a['pcode_dep'], deps[0]['id'] if deps else 1)
+        a['departement_id'] = dep_idx.get(a.get('pcode_dep',''), deps[0]['id'] if deps else 1)
     for c in coms:
-        c['departement_id']    = dep_idx.get(c['pcode_dep'], deps[0]['id'] if deps else 1)
-        c['arrondissement_id'] = arr_idx.get(c['pcode_arr'])
+        c['departement_id']    = dep_idx.get(c.get('pcode_dep',''), deps[0]['id'] if deps else 1)
+        c['arrondissement_id'] = arr_idx.get(c.get('pcode_arr',''))
 
     _CACHE['regions']         = regs
     _CACHE['departements']    = deps
     _CACHE['arrondissements'] = arrs
     _CACHE['communes']        = coms
-    print(f'[admin_shp_service] Cache: {len(regs)} regions, {len(deps)} deps, '
-          f'{len(arrs)} arrs, {len(coms)} communes')
-    if regs:  print(f'  Ex region:  {regs[0]["nom"]} ({regs[0]["pcode"]})')
-    if deps:  print(f'  Ex dep:     {deps[0]["nom"]} ({deps[0]["pcode"]})')
-    if arrs:  print(f'  Ex arr:     {arrs[0]["nom"]} ({arrs[0]["pcode"]})')
-    if coms:  print(f'  Ex commune: {coms[0]["nom"]} ({coms[0]["pcode"]})')
+    print(f'[SHP] Cache pret: {len(regs)} reg / {len(deps)} dep / {len(arrs)} arr / {len(coms)} com')
 
 
-# ── API publique ───────────────────────────────────────────────────────────────
+# ─ API publique ───────────────────────────────────────────────────────────────
 
 def get_regions():
     _build_cache()
@@ -197,15 +182,11 @@ def get_tous_arrondissements():
 
 def get_commune(commune_id):
     _build_cache()
-    for c in _CACHE['communes']:
-        if c['id']==commune_id: return c
-    return None
+    return next((c for c in _CACHE['communes'] if c['id']==commune_id), None)
 
 def get_arrondissement(arr_id):
     _build_cache()
-    for a in _CACHE['arrondissements']:
-        if a['id']==arr_id: return a
-    return None
+    return next((a for a in _CACHE['arrondissements'] if a['id']==arr_id), None)
 
 def search_communes(q):
     _build_cache()
