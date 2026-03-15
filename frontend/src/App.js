@@ -10,11 +10,23 @@ const API = process.env.REACT_APP_API_URL || 'https://carto-facilesn.onrender.co
 const api = axios.create({ baseURL: API, timeout: 60000 });
 
 export default function App() {
-  const [regions, setRegions]               = useState([]);
-  const [departements, setDepartements]     = useState([]);
+  const [regions, setRegions]                 = useState([]);
+  const [departements, setDepartements]       = useState([]);
   const [arrondissements, setArrondissements] = useState([]);
-  const [communes, setCommunes]             = useState([]);
+  const [communes, setCommunes]               = useState([]);
+
+  // Selections courantes (IDs string)
+  const [selRegion, setSelRegion]           = useState('');
+  const [selDep, setSelDep]                 = useState('');
+  const [selArr, setSelArr]                 = useState('');
+  const [selCommune, setSelCommune]         = useState('');
+
+  // Géométries des niveaux sélectionnés pour la carte
+  const [geomRegion, setGeomRegion]         = useState(null);
+  const [geomDep, setGeomDep]               = useState(null);
+  const [geomArr, setGeomArr]               = useState(null);
   const [communeSelectionnee, setCommuneSelectionnee] = useState(null);
+
   const [couchesActives, setCouchesActives] = useState(['routes', 'cours_eau']);
   const [catalogueCouches, setCatalogueCouches] = useState([]);
   const [geojsonCouches, setGeojsonCouches] = useState({});
@@ -24,33 +36,43 @@ export default function App() {
   useEffect(() => {
     api.get('/api/communes/regions')
       .then(r => { setRegions(r.data); setErreur(''); })
-      .catch(() => setErreur('Serveur en cours de demarrage... Rechargez dans 30s'));
+      .catch(() => setErreur('Serveur en cours de démarrage... Rechargez dans 30s'));
     api.get('/api/couches/catalogue')
       .then(r => setCatalogueCouches(r.data))
       .catch(() => {});
   }, []);
 
   const onRegionChange = (rid) => {
-    setDepartements([]);
-    setArrondissements([]);
-    setCommunes([]);
+    setSelRegion(rid);
+    setSelDep(''); setSelArr(''); setSelCommune('');
+    setDepartements([]); setArrondissements([]); setCommunes([]);
+    setGeomRegion(null); setGeomDep(null); setGeomArr(null);
     setCommuneSelectionnee(null);
     setGeojsonCouches({});
     if (!rid) return;
     setLoading(true);
+    // Charger départements + géométrie de la région
+    const region = regions.find(r => String(r.id) === rid);
+    if (region) setGeomRegion(region);
     api.get(`/api/communes/regions/${rid}/departements`)
       .then(r => { setDepartements(r.data); setErreur(''); })
-      .catch(() => setErreur('Erreur chargement departements'))
+      .catch(() => setErreur('Erreur chargement départements'))
       .finally(() => setLoading(false));
   };
 
   const onDepChange = (did) => {
-    setArrondissements([]);
-    setCommunes([]);
+    setSelDep(did);
+    setSelArr(''); setSelCommune('');
+    setArrondissements([]); setCommunes([]);
+    setGeomDep(null); setGeomArr(null);
     setCommuneSelectionnee(null);
     setGeojsonCouches({});
     if (!did) return;
     setLoading(true);
+    // Récupérer la géom du département depuis l'API
+    api.get(`/api/communes/departements/${did}/geom`)
+      .then(r => setGeomDep(r.data))
+      .catch(() => {});
     api.get(`/api/communes/departements/${did}/arrondissements`)
       .then(r => { setArrondissements(r.data); setErreur(''); })
       .catch(() => setErreur('Erreur chargement arrondissements'))
@@ -58,11 +80,17 @@ export default function App() {
   };
 
   const onArrChange = (aid) => {
+    setSelArr(aid);
+    setSelCommune('');
     setCommunes([]);
+    setGeomArr(null);
     setCommuneSelectionnee(null);
     setGeojsonCouches({});
     if (!aid) return;
     setLoading(true);
+    api.get(`/api/communes/arrondissements/${aid}/geom`)
+      .then(r => setGeomArr(r.data))
+      .catch(() => {});
     api.get(`/api/communes/arrondissements/${aid}/communes`)
       .then(r => { setCommunes(r.data); setErreur(''); })
       .catch(() => setErreur('Erreur chargement communes'))
@@ -70,6 +98,7 @@ export default function App() {
   };
 
   const onCommuneChange = (cid) => {
+    setSelCommune(cid);
     if (!cid) { setCommuneSelectionnee(null); return; }
     setLoading(true);
     api.get(`/api/communes/${cid}`)
@@ -119,6 +148,10 @@ export default function App() {
           departements={departements}
           arrondissements={arrondissements}
           communes={communes}
+          selRegion={selRegion}
+          selDep={selDep}
+          selArr={selArr}
+          selCommune={selCommune}
           onRegionChange={onRegionChange}
           onDepChange={onDepChange}
           onArrChange={onArrChange}
@@ -127,6 +160,9 @@ export default function App() {
           loading={loading}
         />
         <Carte
+          geomRegion={geomRegion}
+          geomDep={geomDep}
+          geomArr={geomArr}
           communeSelectionnee={communeSelectionnee}
           geojsonCouches={geojsonCouches}
           loading={loading}
