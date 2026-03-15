@@ -2,7 +2,6 @@ import React from 'react';
 
 export default function PanneauGauche({
   regions, departements, communes,
-  regionId, depId,
   onRegionChange, onDepChange, onCommuneChange,
   communeSelectionnee, loading
 }) {
@@ -13,43 +12,43 @@ export default function PanneauGauche({
       <label className="select-label">Région</label>
       <select
         className="select-field"
-        value={regionId}
+        defaultValue=""
         onChange={e => onRegionChange(e.target.value)}
       >
-        <option value="">-- Choisir une région --</option>
+        <option value="">-- Choisir --</option>
         {regions.map(r => (
-          <option key={r.id} value={r.id}>{r.nom}</option>
+          <option key={r.id} value={String(r.id)}>{r.nom}</option>
         ))}
       </select>
 
       <label className="select-label">Département</label>
       <select
         className="select-field"
-        value={depId}
+        defaultValue=""
         onChange={e => onDepChange(e.target.value)}
-        disabled={!regionId || departements.length === 0}
+        disabled={departements.length === 0}
       >
-        <option value="">-- Choisir un département --</option>
+        <option value="">-- Choisir --</option>
         {departements.map(d => (
-          <option key={d.id} value={d.id}>{d.nom}</option>
+          <option key={d.id} value={String(d.id)}>{d.nom}</option>
         ))}
       </select>
 
       <label className="select-label">Commune</label>
       <select
         className="select-field"
+        defaultValue=""
         onChange={e => onCommuneChange(e.target.value)}
-        disabled={!depId || communes.length === 0}
-        value={communeSelectionnee?.id || ''}
+        disabled={communes.length === 0}
       >
-        <option value="">-- Choisir une commune --</option>
+        <option value="">-- Choisir --</option>
         {communes.map(c => (
-          <option key={c.id} value={c.id}>{c.nom}</option>
+          <option key={c.id} value={String(c.id)}>{c.nom}</option>
         ))}
       </select>
 
       {loading && (
-        <div style={{ fontSize: '0.75rem', color: '#1a5276', padding: '4px 0' }}>
+        <div style={{fontSize:'0.78rem', color:'#1a5276', marginTop:4}}>
           ⏳ Chargement...
         </div>
       )}
@@ -58,18 +57,10 @@ export default function PanneauGauche({
         <div className="info-commune">
           <div className="nom">{communeSelectionnee.nom}</div>
           <div className="detail">
-            {communeSelectionnee.departement_nom && (
-              <div>📍 Dép. : {communeSelectionnee.departement_nom}</div>
-            )}
-            {communeSelectionnee.region_nom && (
-              <div>🏞️ Région : {communeSelectionnee.region_nom}</div>
-            )}
-            {communeSelectionnee.population && (
-              <div>👥 Pop. : {communeSelectionnee.population.toLocaleString('fr-FR')}</div>
-            )}
-            {communeSelectionnee.superficie_km2 && (
-              <div>🗺️ {Math.round(communeSelectionnee.superficie_km2)} km²</div>
-            )}
+            {communeSelectionnee.departement_nom && <div>📍 {communeSelectionnee.departement_nom}</div>}
+            {communeSelectionnee.region_nom     && <div>🏞️ {communeSelectionnee.region_nom}</div>}
+            {communeSelectionnee.population     && <div>👥 {communeSelectionnee.population.toLocaleString('fr-FR')} hab.</div>}
+            {communeSelectionnee.superficie_km2 && <div>🗺️ {Math.round(communeSelectionnee.superficie_km2)} km²</div>}
           </div>
         </div>
       )}
