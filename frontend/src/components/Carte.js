@@ -21,15 +21,14 @@ function FlyToCommune({ commune }) {
       const lngs = coords.map(c => c[0]);
       map.flyToBounds(
         [[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]],
-        { padding: [30, 30] }
+        { padding: [40, 40], maxZoom: 12 }
       );
-    } catch(e) {}
+    } catch (e) {}
   }, [commune, map]);
   return null;
 }
 
 export default function Carte({ communeSelectionnee, geojsonCouches, loading }) {
-
   const styleCouche = (tc) => ({
     color: COULEURS[tc] || '#666',
     weight: ['routes', 'chemin_fer', 'cours_eau', 'frontieres'].includes(tc) ? 1.5 : 1,
@@ -43,41 +42,41 @@ export default function Carte({ communeSelectionnee, geojsonCouches, loading }) 
 
   return (
     <div className="carte-wrapper">
-      {loading && <div className="carte-loading">⏳ Chargement des données...</div>}
-      {!communeSelectionnee && (
-        <div className="carte-placeholder">
-          <span style={{fontSize:'2.5rem'}}>&#x1F5FA;&#xFE0F;</span>
-          <span>Sélectionnez une région, un département et une commune</span>
-        </div>
-      )}
+      {loading && <div className="carte-loading">⏳ Chargement...</div>}
+
+      {/* La carte est TOUJOURS visible - centrée sur le Sénégal par défaut */}
       <MapContainer
-        center={[14.5, -14.5]}
-        zoom={6}
-        style={{ height: '100%', width: '100%', display: communeSelectionnee ? 'block' : 'none' }}
+        center={[14.4, -14.4]}
+        zoom={7}
+        style={{ height: '100%', width: '100%' }}
       >
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>'
+          attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors'
         />
+
         {communeSelectionnee?.geom && (
           <>
             <FlyToCommune commune={communeSelectionnee} />
             <GeoJSON
               key={`commune-${communeSelectionnee.id}`}
-              data={typeof communeSelectionnee.geom === 'string'
-                ? JSON.parse(communeSelectionnee.geom)
-                : communeSelectionnee.geom}
+              data={
+                typeof communeSelectionnee.geom === 'string'
+                  ? JSON.parse(communeSelectionnee.geom)
+                  : communeSelectionnee.geom
+              }
               style={styleCommune}
             />
           </>
         )}
+
         {Object.entries(geojsonCouches).map(([tc, data]) =>
           data?.features?.length > 0 && (
             <GeoJSON
-              key={`${tc}-${communeSelectionnee?.id}`}
+              key={`${tc}-${communeSelectionnee?.id}-${data.features.length}`}
               data={data}
               style={styleCouche(tc)}
-              pointToLayer={(feature, latlng) => {
+              pointToLayer={(_feature, latlng) => {
                 // eslint-disable-next-line no-undef
                 return L.circleMarker(latlng, {
                   radius: 5,
@@ -89,8 +88,8 @@ export default function Carte({ communeSelectionnee, geojsonCouches, loading }) 
               onEachFeature={(feature, layer) => {
                 const props = feature.properties || {};
                 const lignes = Object.entries(props)
-                  .filter(([k, v]) => v && !k.startsWith('_'))
-                  .slice(0, 5)
+                  .filter(([k, v]) => v && v !== '' && !k.startsWith('_'))
+                  .slice(0, 6)
                   .map(([k, v]) => `<b>${k}</b>: ${v}`)
                   .join('<br/>');
                 if (lignes) layer.bindPopup(lignes);
@@ -99,6 +98,19 @@ export default function Carte({ communeSelectionnee, geojsonCouches, loading }) 
           )
         )}
       </MapContainer>
+
+      {/* Message flottant si aucune commune sélectionnée */}
+      {!communeSelectionnee && (
+        <div style={{
+          position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(255,255,255,0.92)', padding: '10px 20px',
+          borderRadius: 20, fontSize: '0.85rem', color: '#1a5276',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.15)', zIndex: 1000, pointerEvents: 'none',
+          whiteSpace: 'nowrap'
+        }}>
+          🗺️ Sélectionnez une région → département → commune
+        </div>
+      )}
     </div>
   );
 }
