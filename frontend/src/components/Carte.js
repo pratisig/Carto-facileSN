@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
 
 const COULEURS = {
@@ -19,14 +19,16 @@ function FlyToCommune({ commune }) {
       if (!coords.length) return;
       const lats = coords.map(c => c[1]);
       const lngs = coords.map(c => c[0]);
-      map.flyToBounds([[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]], { padding: [30, 30] });
+      map.flyToBounds(
+        [[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]],
+        { padding: [30, 30] }
+      );
     } catch(e) {}
   }, [commune, map]);
   return null;
 }
 
 export default function Carte({ communeSelectionnee, geojsonCouches, loading }) {
-  const geoJsonRefs = useRef({});
 
   const styleCouche = (tc) => ({
     color: COULEURS[tc] || '#666',
@@ -76,10 +78,12 @@ export default function Carte({ communeSelectionnee, geojsonCouches, loading }) 
               data={data}
               style={styleCouche(tc)}
               pointToLayer={(feature, latlng) => {
-                const L = window.L;
+                // eslint-disable-next-line no-undef
                 return L.circleMarker(latlng, {
-                  radius: 5, color: COULEURS[tc] || '#666',
-                  fillColor: COULEURS[tc] || '#666', fillOpacity: 0.8,
+                  radius: 5,
+                  color: COULEURS[tc] || '#666',
+                  fillColor: COULEURS[tc] || '#666',
+                  fillOpacity: 0.8,
                 });
               }}
               onEachFeature={(feature, layer) => {
