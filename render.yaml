@@ -12,11 +12,11 @@ services:
       - key: FLASK_ENV
         value: production
 
-  # ── SERVICE 2 : Frontend React (site statique) ───────────────────────────────
+  # ── SERVICE 2 : Frontend React ────────────────────────────────────────────────────
   - type: web
     name: carto-facilesn-frontend
     runtime: node
-    buildCommand: cd frontend && npm ci && npm run build
+    buildCommand: cd frontend && npm install && npm run build
     startCommand: cd frontend && npx serve -s build -l $PORT
     envVars:
       - key: NODE_VERSION
@@ -24,7 +24,7 @@ services:
       - key: REACT_APP_API_URL
         value: https://carto-facilesn-api.onrender.com
 
-  # ── SERVICE 3 : Interface Streamlit (experts) ────────────────────────────────
+  # ── SERVICE 3 : Interface Streamlit (experts) ───────────────────────────────
   - type: web
     name: carto-facilesn-experts
     runtime: python
