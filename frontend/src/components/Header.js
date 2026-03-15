@@ -1,11 +1,18 @@
 import React from 'react';
 export default function Header() {
   return (
-    <div className="header">
-      <div>
-        <h1>&#x1F5FA;&#xFE0F; Carto-facileSN</h1>
-        <div className="header-subtitle">Cartographie simplifiée du Sénégal</div>
+    <header className="header">
+      <div className="header-left">
+        <span className="header-logo">🇸🇳</span>
+        <div>
+          <div className="header-title">Carto-facileSN</div>
+          <div className="header-subtitle">Cartographie administrative du Sénégal</div>
+        </div>
       </div>
-    </div>
+      <div className="header-right">
+        <span className="header-badge">📍 WGS 84</span>
+        <span className="header-badge">v2.0</span>
+      </div>
+    </header>
   );
 }
