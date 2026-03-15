@@ -4,66 +4,76 @@ export default function PanneauGauche({
   regions, departements, arrondissements, communes,
   selRegion, selDep, selArr, selCommune,
   onRegionChange, onDepChange, onArrChange, onCommuneChange,
-  communeSelectionnee, loading
+  featCommune, loading
 }) {
   return (
     <div className="panneau panneau-gauche">
       <h2>Zone géographique</h2>
 
-      <label className="select-label">Région ({regions.length} chargées)</label>
+      <label className="select-label">Région ({regions.length})</label>
       <select
         className="select-field"
         value={selRegion}
         onChange={e => onRegionChange(e.target.value)}
       >
-        <option value="">-- Choisir --</option>
-        {regions.map(r => <option key={r.id} value={String(r.id)}>{r.nom}</option>)}
+        <option value="">-- Toutes les régions --</option>
+        {regions.map(r => (
+          <option key={r.pcode} value={r.pcode}>{r.nom}</option>
+        ))}
       </select>
 
-      <label className="select-label">Département ({departements.length} chargés)</label>
+      <label className="select-label">Département ({departements.length})</label>
       <select
         className="select-field"
         value={selDep}
         onChange={e => onDepChange(e.target.value)}
-        disabled={departements.length === 0}
+        disabled={!selRegion}
       >
         <option value="">-- Choisir --</option>
-        {departements.map(d => <option key={d.id} value={String(d.id)}>{d.nom}</option>)}
+        {departements.map(d => (
+          <option key={d.pcode} value={d.pcode}>{d.nom}</option>
+        ))}
       </select>
 
-      <label className="select-label">Arrondissement ({arrondissements.length} chargés)</label>
+      <label className="select-label">Arrondissement ({arrondissements.length})</label>
       <select
         className="select-field"
         value={selArr}
         onChange={e => onArrChange(e.target.value)}
-        disabled={arrondissements.length === 0}
+        disabled={!selDep}
       >
         <option value="">-- Choisir --</option>
-        {arrondissements.map(a => <option key={a.id} value={String(a.id)}>{a.nom}</option>)}
+        {arrondissements.map(a => (
+          <option key={a.pcode} value={a.pcode}>{a.nom}</option>
+        ))}
       </select>
 
-      <label className="select-label">Commune ({communes.length} chargées)</label>
+      <label className="select-label">Commune ({communes.length})</label>
       <select
         className="select-field"
         value={selCommune}
         onChange={e => onCommuneChange(e.target.value)}
-        disabled={communes.length === 0}
+        disabled={!selArr}
       >
         <option value="">-- Choisir --</option>
-        {communes.map(c => <option key={c.id} value={String(c.id)}>{c.nom}</option>)}
+        {communes.map(c => (
+          <option key={c.pcode} value={c.pcode}>{c.nom}</option>
+        ))}
       </select>
 
-      {loading && <div style={{fontSize:'0.78rem', color:'#1a5276', marginTop:4}}>⏳ Chargement...</div>}
+      {loading && (
+        <div style={{ fontSize:'0.78rem', color:'#1a5276', marginTop:6 }}>
+          ⏳ Chargement...
+        </div>
+      )}
 
-      {communeSelectionnee && (
+      {featCommune && (
         <div className="info-commune">
-          <div className="nom">{communeSelectionnee.nom}</div>
-          <div className="detail">
-            {communeSelectionnee.arrondissement_nom && <div>🏘️ {communeSelectionnee.arrondissement_nom}</div>}
-            {communeSelectionnee.departement_nom    && <div>📍 {communeSelectionnee.departement_nom}</div>}
-            {communeSelectionnee.region_nom         && <div>🏞️ {communeSelectionnee.region_nom}</div>}
-            {communeSelectionnee.population         && <div>👥 {communeSelectionnee.population.toLocaleString('fr-FR')} hab.</div>}
-            {communeSelectionnee.superficie_km2     && <div>🗺️ {Math.round(communeSelectionnee.superficie_km2)} km²</div>}
+          <div className="nom">
+            {featCommune.properties._nom || featCommune.properties.NAME_4 || 'Commune'}
+          </div>
+          <div className="detail" style={{ fontSize: '0.8rem', color: '#555', marginTop: 6 }}>
+            📍 PCODE : {featCommune.properties.GID_4 || featCommune.properties.ADM4_PCODE || '—'}
           </div>
         </div>
       )}

@@ -1,137 +1,93 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import Carte from './components/Carte';
+import React, { useState, useCallback } from 'react';
+import { useGeoData } from './hooks/useGeoData';
+import CarteV2 from './components/CarteV2';
 import PanneauGauche from './components/PanneauGauche';
 import PanneauDroit from './components/PanneauDroit';
 import Header from './components/Header';
 import './App.css';
 
 const API = process.env.REACT_APP_API_URL || 'https://carto-facilesn.onrender.com';
-const api = axios.create({ baseURL: API, timeout: 60000 });
 
 export default function App() {
-  const [regions, setRegions]                 = useState([]);
-  const [departements, setDepartements]       = useState([]);
-  const [arrondissements, setArrondissements] = useState([]);
-  const [communes, setCommunes]               = useState([]);
+  const {
+    geoData, chargement, erreur,
+    getRegions, getDepartements, getArrondissements, getCommunes,
+    getFeatureByPcode,
+  } = useGeoData();
 
-  // Selections courantes (IDs string)
-  const [selRegion, setSelRegion]           = useState('');
-  const [selDep, setSelDep]                 = useState('');
-  const [selArr, setSelArr]                 = useState('');
-  const [selCommune, setSelCommune]         = useState('');
-
-  // Géométries des niveaux sélectionnés pour la carte
-  const [geomRegion, setGeomRegion]         = useState(null);
-  const [geomDep, setGeomDep]               = useState(null);
-  const [geomArr, setGeomArr]               = useState(null);
-  const [communeSelectionnee, setCommuneSelectionnee] = useState(null);
+  const [selRegion, setSelRegion]   = useState('');
+  const [selDep, setSelDep]         = useState('');
+  const [selArr, setSelArr]         = useState('');
+  const [selCommune, setSelCommune] = useState('');
 
   const [couchesActives, setCouchesActives] = useState(['routes', 'cours_eau']);
-  const [catalogueCouches, setCatalogueCouches] = useState([]);
-  const [geojsonCouches, setGeojsonCouches] = useState({});
-  const [loading, setLoading]               = useState(false);
-  const [erreur, setErreur]                 = useState('');
+  const [geojsonThematiques, setGeojsonThematiques] = useState({});
+  const [loadingCouche, setLoadingCouche] = useState(false);
 
-  useEffect(() => {
-    api.get('/api/communes/regions')
-      .then(r => { setRegions(r.data); setErreur(''); })
-      .catch(() => setErreur('Serveur en cours de démarrage... Rechargez dans 30s'));
-    api.get('/api/couches/catalogue')
-      .then(r => setCatalogueCouches(r.data))
-      .catch(() => {});
+  const regions         = getRegions();
+  const departements    = getDepartements(selRegion);
+  const arrondissements = getArrondissements(selDep);
+  const communes        = getCommunes(selArr);
+
+  const featRegion  = selRegion  ? getFeatureByPcode('regions', selRegion)         : null;
+  const featDep     = selDep     ? getFeatureByPcode('departements', selDep)       : null;
+  const featArr     = selArr     ? getFeatureByPcode('arrondissements', selArr)    : null;
+  const featCommune = selCommune ? getFeatureByPcode('communes', selCommune)       : null;
+
+  const onRegionChange = useCallback((pcode) => {
+    setSelRegion(pcode); setSelDep(''); setSelArr(''); setSelCommune('');
   }, []);
 
-  const onRegionChange = (rid) => {
-    setSelRegion(rid);
-    setSelDep(''); setSelArr(''); setSelCommune('');
-    setDepartements([]); setArrondissements([]); setCommunes([]);
-    setGeomRegion(null); setGeomDep(null); setGeomArr(null);
-    setCommuneSelectionnee(null);
-    setGeojsonCouches({});
-    if (!rid) return;
-    setLoading(true);
-    // Charger départements + géométrie de la région
-    const region = regions.find(r => String(r.id) === rid);
-    if (region) setGeomRegion(region);
-    api.get(`/api/communes/regions/${rid}/departements`)
-      .then(r => { setDepartements(r.data); setErreur(''); })
-      .catch(() => setErreur('Erreur chargement départements'))
-      .finally(() => setLoading(false));
-  };
+  const onDepChange = useCallback((pcode) => {
+    setSelDep(pcode); setSelArr(''); setSelCommune('');
+  }, []);
 
-  const onDepChange = (did) => {
-    setSelDep(did);
-    setSelArr(''); setSelCommune('');
-    setArrondissements([]); setCommunes([]);
-    setGeomDep(null); setGeomArr(null);
-    setCommuneSelectionnee(null);
-    setGeojsonCouches({});
-    if (!did) return;
-    setLoading(true);
-    // Récupérer la géom du département depuis l'API
-    api.get(`/api/communes/departements/${did}/geom`)
-      .then(r => setGeomDep(r.data))
-      .catch(() => {});
-    api.get(`/api/communes/departements/${did}/arrondissements`)
-      .then(r => { setArrondissements(r.data); setErreur(''); })
-      .catch(() => setErreur('Erreur chargement arrondissements'))
-      .finally(() => setLoading(false));
-  };
+  const onArrChange = useCallback((pcode) => {
+    setSelArr(pcode); setSelCommune('');
+  }, []);
 
-  const onArrChange = (aid) => {
-    setSelArr(aid);
-    setSelCommune('');
-    setCommunes([]);
-    setGeomArr(null);
-    setCommuneSelectionnee(null);
-    setGeojsonCouches({});
-    if (!aid) return;
-    setLoading(true);
-    api.get(`/api/communes/arrondissements/${aid}/geom`)
-      .then(r => setGeomArr(r.data))
-      .catch(() => {});
-    api.get(`/api/communes/arrondissements/${aid}/communes`)
-      .then(r => { setCommunes(r.data); setErreur(''); })
-      .catch(() => setErreur('Erreur chargement communes'))
-      .finally(() => setLoading(false));
-  };
+  const onCommuneChange = useCallback((pcode) => {
+    setSelCommune(pcode);
+  }, []);
 
-  const onCommuneChange = (cid) => {
-    setSelCommune(cid);
-    if (!cid) { setCommuneSelectionnee(null); return; }
-    setLoading(true);
-    api.get(`/api/communes/${cid}`)
-      .then(r => {
-        setCommuneSelectionnee(r.data);
-        return chargerCouches(r.data, couchesActives);
-      })
-      .catch(() => setErreur('Erreur chargement commune'))
-      .finally(() => setLoading(false));
-  };
-
-  const chargerCouches = (commune, types) => {
-    if (!commune) return Promise.resolve();
-    return Promise.all(types.map(tc =>
-      api.get(`/api/couches/${commune.id}/${tc}`)
-        .then(r => ({ tc, data: r.data }))
-        .catch(() => ({ tc, data: null }))
-    )).then(results => {
-      const obj = {};
-      results.forEach(({ tc, data }) => { obj[tc] = data; });
-      setGeojsonCouches(prev => ({ ...prev, ...obj }));
-    });
-  };
-
-  const toggleCouche = (tc) => {
-    if (couchesActives.includes(tc)) {
-      setCouchesActives(prev => prev.filter(c => c !== tc));
-      setGeojsonCouches(prev => { const n = { ...prev }; delete n[tc]; return n; });
-    } else {
-      setCouchesActives(prev => [...prev, tc]);
-      if (communeSelectionnee) chargerCouches(communeSelectionnee, [tc]);
+  const chargerCoucheThematique = useCallback(async (id_couche) => {
+    if (geojsonThematiques[id_couche]) return;
+    setLoadingCouche(true);
+    try {
+      const r = await fetch(`${API}/api/couches/thematique/${id_couche}`);
+      const data = await r.json();
+      setGeojsonThematiques(prev => ({ ...prev, [id_couche]: data }));
+    } catch (e) {
+      console.warn(`Erreur chargement couche ${id_couche}`, e);
+    } finally {
+      setLoadingCouche(false);
     }
-  };
+  }, [geojsonThematiques]);
+
+  const toggleCouche = useCallback((id_couche) => {
+    if (couchesActives.includes(id_couche)) {
+      setCouchesActives(prev => prev.filter(c => c !== id_couche));
+    } else {
+      setCouchesActives(prev => [...prev, id_couche]);
+      chargerCoucheThematique(id_couche);
+    }
+  }, [couchesActives, chargerCoucheThematique]);
+
+  const catalogueCouches = [
+    { id: 'routes',          description: 'Réseau routier',    couleur_defaut: '#888888' },
+    { id: 'chemin_fer',      description: 'Chemins de fer',    couleur_defaut: '#444444' },
+    { id: 'cours_eau',       description: "Cours d'eau",       couleur_defaut: '#3498db' },
+    { id: 'plans_eau',       description: "Plans d'eau",       couleur_defaut: '#85c1e9' },
+    { id: 'points_eau',      description: "Points d'eau",      couleur_defaut: '#2980b9' },
+    { id: 'aires_protegees', description: 'Aires protégées',   couleur_defaut: '#1e8449' },
+    { id: 'courbes_niveau',  description: 'Courbes de niveau', couleur_defaut: '#b7950b' },
+    { id: 'sable',           description: 'Zones sableuses',   couleur_defaut: '#f0e68c' },
+    { id: 'agglomerations',  description: 'Agglomérations',    couleur_defaut: '#e67e22' },
+    { id: 'aeroports',       description: 'Aéroports',         couleur_defaut: '#2c3e50' },
+    { id: 'localites',       description: 'Localités',         couleur_defaut: '#c0392b' },
+    { id: 'surfaces_boisees',description: 'Surfaces boisées',  couleur_defaut: '#27ae60' },
+    { id: 'frontieres',      description: 'Frontières',        couleur_defaut: '#2c3e50' },
+  ];
 
   return (
     <div className="app-container">
@@ -141,6 +97,12 @@ export default function App() {
           background:'#fdecea', color:'#c0392b', padding:'6px 16px',
           fontSize:'0.82rem', textAlign:'center', borderBottom:'1px solid #f5c6cb'
         }}>⚠️ {erreur}</div>
+      )}
+      {chargement && (
+        <div style={{
+          background:'#eaf4fb', color:'#1a5276', padding:'6px 16px',
+          fontSize:'0.82rem', textAlign:'center', borderBottom:'1px solid #aed6f1'
+        }}>⏳ Chargement des données géographiques...</div>
       )}
       <div className="main-layout">
         <PanneauGauche
@@ -156,22 +118,25 @@ export default function App() {
           onDepChange={onDepChange}
           onArrChange={onArrChange}
           onCommuneChange={onCommuneChange}
-          communeSelectionnee={communeSelectionnee}
-          loading={loading}
+          featCommune={featCommune}
+          loading={chargement || loadingCouche}
         />
-        <Carte
-          geomRegion={geomRegion}
-          geomDep={geomDep}
-          geomArr={geomArr}
-          communeSelectionnee={communeSelectionnee}
-          geojsonCouches={geojsonCouches}
-          loading={loading}
+        <CarteV2
+          geoData={geoData}
+          featRegion={featRegion}
+          featDep={featDep}
+          featArr={featArr}
+          featCommune={featCommune}
+          geojsonThematiques={geojsonThematiques}
+          couchesActives={couchesActives}
+          catalogueCouches={catalogueCouches}
+          chargement={chargement}
         />
         <PanneauDroit
           catalogueCouches={catalogueCouches}
           couchesActives={couchesActives}
           toggleCouche={toggleCouche}
-          communeSelectionnee={communeSelectionnee}
+          featCommune={featCommune}
         />
       </div>
     </div>
