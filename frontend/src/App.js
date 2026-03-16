@@ -9,8 +9,6 @@ import './App.css';
 
 const API = process.env.REACT_APP_API_URL || 'https://carto-facilesn.onrender.com';
 
-// IMPORTANT: les 'groupe' doivent correspondre exactement à GROUPES_ORDRE
-// dans GestionnaireCouches.js (avec accents)
 const CATALOGUE = [
   { groupe:'Transport',   id:'routes',          label:'Réseau routier',    couleur:'#888888', icon:'🛣️' },
   { groupe:'Transport',   id:'chemin_fer',       label:'Chemins de fer',    couleur:'#555555', icon:'🚂' },
@@ -44,7 +42,7 @@ export default function App() {
   const [visCommunes, setVisCommunes] = useState(true);
 
   const [visEtiquettes, setVisEtiquettes] = useState({
-    regions: true, departements: true, arrondissements: false, communes: false,
+    regions: true, departements: true, arrondissements: false, communes: false, localites: true,
   });
   const setVisEtiquette = useCallback((niveau, val) => {
     setVisEtiquettes(prev => ({ ...prev, [niveau]: val }));
@@ -52,7 +50,8 @@ export default function App() {
 
   const [couleurCommune, setCouleurCommune] = useState('#e74c3c');
 
-  const [couchesActives,     setCouchesActives]     = useState([]);
+  // localites actives par defaut (comme les couches admin)
+  const [couchesActives,     setCouchesActives]     = useState(['localites']);
   const [geojsonThematiques, setGeojsonThematiques] = useState({});
   const [prechauffage,       setPrechauffage]       = useState(true);
 
@@ -79,7 +78,7 @@ export default function App() {
   const onCommuneChange = useCallback(v => setSelCommune(v), []);
   const onReset         = useCallback(() => { setSelRegion(''); setSelDep(''); setSelArr(''); setSelCommune(''); }, []);
 
-  // Charger une couche — avec retry automatique (Render cold start)
+  // Charger une couche avec retry (Render cold start ~30s)
   const chargerCouche = useCallback(async (id, tentative = 1) => {
     if (geojsonCacheRef.current[id]) return;
     try {
@@ -92,16 +91,15 @@ export default function App() {
       setGeojsonThematiques(prev => ({ ...prev, [id]: data }));
     } catch(e) {
       console.warn(`[App] Erreur ${id} (tentative ${tentative}):`, e.message);
-      // Retry jusqu'à 3 fois avec délai croissant (Render met ~30s à démarrer)
       if (tentative < 3) {
         await new Promise(res => setTimeout(res, tentative * 8000));
         return chargerCouche(id, tentative + 1);
       }
-      console.error(`[App] ✕ Échec définitif pour ${id} après ${tentative} tentatives`);
+      console.error(`[App] ✕ Échec définitif pour ${id}`);
     }
   }, []);
 
-  // Précharger toutes les couches en arrière-plan au démarrage
+  // Précharger toutes les couches en arrière-plan
   useEffect(() => {
     setPrechauffage(true);
     Promise.all(CATALOGUE.map(c => chargerCouche(c.id)))
@@ -112,7 +110,7 @@ export default function App() {
     setCouchesActives(prev =>
       prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
     );
-    chargerCouche(id); // no-op si déjà en cache
+    chargerCouche(id);
   }, [chargerCouche]);
 
   const handleImportFile = useCallback((e) => {

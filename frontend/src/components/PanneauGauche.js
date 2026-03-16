@@ -34,7 +34,7 @@ export default function PanneauGauche({
   return (
     <div className="panneau-gauche">
 
-      {/* ===== Navigation administrative ===== */}
+      {/* ===== Zone géographique ===== */}
       <div className="pg-section">
         <div className="pg-section-title">
           <span>🗺️</span> Zone géographique
@@ -112,7 +112,7 @@ export default function PanneauGauche({
         )}
       </div>
 
-      {/* ===== Couleur commune sélectionnée ===== */}
+      {/* ===== Couleur commune ===== */}
       {selCommune && (
         <div className="pg-section">
           <div className="pg-section-title"><span>🎨</span> Couleur de la commune</div>
@@ -127,7 +127,6 @@ export default function PanneauGauche({
             <button
               className="btn-couleur-reset"
               onClick={() => setCouleurCommune('#e74c3c')}
-              title="Réinitialiser au rouge"
             >↺ Défaut</button>
           </div>
         </div>
@@ -140,6 +139,7 @@ export default function PanneauGauche({
         <ToggleRow dot="#7f8c8d" label="Départements"    checked={visDeps}     onChange={setVisDeps}     />
         <ToggleRow dot="#aab7b8" label="Arrondissements" checked={visArrs}     onChange={setVisArrs}     />
         <ToggleRow dot="#e74c3c" label="Communes"        checked={visCommunes} onChange={setVisCommunes} />
+        <ToggleRow dot="#c0392b" label="Localités (SHP)" checked={true} onChange={() => {}} />
       </div>
 
       {/* ===== Étiquettes ===== */}
@@ -149,7 +149,9 @@ export default function PanneauGauche({
         <ToggleRow dot="#7f8c8d" label="Noms départements"    checked={visEtiquettes.departements}    onChange={v => setVisEtiquette('departements', v)}    />
         <ToggleRow dot="#7f8c8d" label="Noms arrondissements" checked={visEtiquettes.arrondissements} onChange={v => setVisEtiquette('arrondissements', v)} />
         <ToggleRow dot="#e74c3c" label="Noms communes"        checked={visEtiquettes.communes}        onChange={v => setVisEtiquette('communes', v)}        />
+        <ToggleRow dot="#c0392b" label="Noms localités ⚠️¹"  checked={visEtiquettes.localites}       onChange={v => setVisEtiquette('localites', v)}       />
       </div>
+      <div className="pg-note">¹ Noms localités visibles à partir du zoom département (zoom ≥ 9)</div>
 
       {/* ===== Données ===== */}
       <div className="pg-section">
