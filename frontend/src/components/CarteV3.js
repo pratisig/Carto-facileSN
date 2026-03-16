@@ -1,7 +1,11 @@
 /**
- * CarteV3 — Carte principale responsive
- * - Mobile: boutons flottants en bas pour ouvrir les drawers
- * - Desktop: panneaux latéraux fixes
+ * CarteV3 — Carte principale responsive v5
+ * Nouveautés:
+ * - Zoom auto sur fichier importé
+ * - Mesure de distance ET de surface
+ * - Recherche par nom (localités/communes)
+ * - Recherche par coordonnées
+ * - Coordinate picker (clic carte → copie)
  */
 import React, { useEffect, useCallback, useRef, useState } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, useMapEvents } from 'react-leaflet';
@@ -33,6 +37,21 @@ const FONDS = [
 
 const ZOOM_MIN = { regions:5, departements:8, arrondissements:10, communes:11, localites:9 };
 
+// ─── Helpers géométrie ────────────────────────────────────────────
+function sphericalArea(latlngs) {
+  // Shoelace sur WGS84 → m²
+  const R = 6371000;
+  const pts = latlngs.map(p => [p.lat * Math.PI/180, p.lng * Math.PI/180]);
+  let area = 0;
+  for (let i=0, n=pts.length; i<n; i++) {
+    const [lat1,lon1] = pts[i];
+    const [lat2,lon2] = pts[(i+1)%n];
+    area += (lon2-lon1) * (2 + Math.sin(lat1) + Math.sin(lat2));
+  }
+  return Math.abs(area * R * R / 2);
+}
+
+// ─── Auto-zoom sur selection admin ────────────────────────────────
 function AutoZoom({ feature }) {
   const map = useMap();
   const prev = useRef(null);
@@ -47,15 +66,35 @@ function AutoZoom({ feature }) {
   return null;
 }
 
-function CoordsBar({ onCoords, onZoom }) {
+// ─── Auto-zoom sur fichier importé (indépendant) ──────────────────
+function AutoZoomImport({ importData }) {
+  const map = useMap();
+  const prevLen = useRef(null);
+  useEffect(() => {
+    if (!importData?.features?.length) return;
+    const len = importData.features.length;
+    if (len === prevLen.current) return;
+    prevLen.current = len;
+    try {
+      const b = L.geoJSON(importData).getBounds();
+      if (b.isValid()) map.flyToBounds(b, { padding:[50,50], maxZoom:16, duration:1.0 });
+    } catch(e){}
+  }, [importData, map]);
+  return null;
+}
+
+// ─── Barre coords + zoom ──────────────────────────────────────────
+function CoordsBar({ onCoords, onZoom, pickerActif, onPickerClick }) {
   const map = useMap();
   useMapEvents({
     mousemove: e => onCoords(e.latlng),
     zoomend:   () => onZoom(map.getZoom()),
+    click:     e => { if (pickerActif) onPickerClick(e.latlng); },
   });
   return null;
 }
 
+// ─── Étiquettes admin ─────────────────────────────────────────────
 function EtiquetteLayer({ data, cssClass, niveau, visible, zoom }) {
   if (!visible || !data?.features) return null;
   if (zoom < ZOOM_MIN[niveau]) return null;
@@ -85,73 +124,333 @@ function EtiquettesLocalites({ data, visible, zoom }) {
       onEachFeature={(feature, layer) => {
         const nom = feature.properties._nom || feature.properties.NOM || feature.properties.NAME || '';
         if (!nom) return;
-        layer.bindTooltip(nom, {
-          permanent:true, direction:'right', offset:[4,0],
-          className:'leaflet-label-localite', sticky:false,
-        });
+        layer.bindTooltip(nom, { permanent:true, direction:'right', offset:[4,0], className:'leaflet-label-localite', sticky:false });
       }}
     />
   );
 }
 
-function OutilsDessin({ actif }) {
+// ─── Panel Outils ─────────────────────────────────────────────────
+function PanelOutils({ geoData, geojsonThematiques, pickerActif, setPickerActif, pickerCoords }) {
   const map = useMap();
-  const [mode, setMode] = useState(null);
+  const [onglet, setOnglet] = useState('mesure'); // mesure | surface | recherche | coords
+
+  // --- Mesure distance ---
+  const [modeMesure, setModeMesure] = useState(false);
   const ptsMesure = useRef([]);
   const markersMesure = useRef([]);
   const lignesMesure = useRef([]);
-
   const nettoyerMesure = useCallback(() => {
     markersMesure.current.forEach(m => map.removeLayer(m));
     lignesMesure.current.forEach(l => map.removeLayer(l));
-    markersMesure.current = []; lignesMesure.current = []; ptsMesure.current = [];
+    markersMesure.current=[]; lignesMesure.current=[]; ptsMesure.current=[];
   }, [map]);
+
+  // --- Mesure surface ---
+  const [modeSurface, setModeSurface] = useState(false);
+  const ptsSurface = useRef([]);
+  const layersSurface = useRef([]);
+  const [surfaceResult, setSurfaceResult] = useState(null);
+  const nettoyerSurface = useCallback(() => {
+    layersSurface.current.forEach(l => map.removeLayer(l));
+    layersSurface.current=[]; ptsSurface.current=[]; setSurfaceResult(null);
+  }, [map]);
+
+  // --- Recherche ---
+  const [recherche, setRecherche] = useState('');
+  const [resultats, setResultats] = useState([]);
+  const markersRech = useRef([]);
+  const nettoyerRecherche = useCallback(() => {
+    markersRech.current.forEach(m => map.removeLayer(m));
+    markersRech.current=[]; setResultats([]);
+  }, [map]);
+
+  // --- Coords ---
+  const [latInput, setLatInput] = useState('');
+  const [lonInput, setLonInput] = useState('');
+  const [coordMarker, setCoordMarker] = useState(null);
+  const [copie, setCopie] = useState(false);
 
   useMapEvents({
     click: (e) => {
-      if (mode !== 'mesure') return;
-      const pt = e.latlng;
-      ptsMesure.current.push(pt);
-      markersMesure.current.push(
-        L.circleMarker(pt, {radius:4,color:'#e74c3c',fillOpacity:1}).addTo(map)
-      );
-      if (ptsMesure.current.length >= 2) {
-        const pts = ptsMesure.current;
-        const dist  = pts[pts.length-2].distanceTo(pts[pts.length-1]);
-        const total = pts.reduce((acc,p,i) => i===0?0:acc+pts[i-1].distanceTo(p), 0);
-        const l = L.polyline([pts[pts.length-2], pt], {color:'#e74c3c',weight:2,dashArray:'5,5'}).addTo(map);
-        l.bindTooltip(`${(dist/1000).toFixed(2)} km (total: ${(total/1000).toFixed(2)} km)`,
-          {permanent:true, className:'label-mesure'});
-        lignesMesure.current.push(l);
+      // mesure distance
+      if (modeMesure) {
+        const pt = e.latlng;
+        ptsMesure.current.push(pt);
+        markersMesure.current.push(L.circleMarker(pt,{radius:4,color:'#e74c3c',fillOpacity:1}).addTo(map));
+        if (ptsMesure.current.length >= 2) {
+          const pts = ptsMesure.current;
+          const dist  = pts[pts.length-2].distanceTo(pt);
+          const total = pts.reduce((acc,p,i)=>i===0?0:acc+pts[i-1].distanceTo(p),0);
+          const l = L.polyline([pts[pts.length-2],pt],{color:'#e74c3c',weight:2,dashArray:'5,5'}).addTo(map);
+          l.bindTooltip(`${(dist/1000).toFixed(2)} km | total: ${(total/1000).toFixed(2)} km`,
+            {permanent:true,className:'label-mesure'});
+          lignesMesure.current.push(l);
+        }
+      }
+      // mesure surface
+      if (modeSurface) {
+        const pt = e.latlng;
+        ptsSurface.current.push(pt);
+        const mk = L.circleMarker(pt,{radius:4,color:'#8e44ad',fillOpacity:1}).addTo(map);
+        layersSurface.current.push(mk);
+        if (ptsSurface.current.length >= 3) {
+          layersSurface.current.filter(l=>l instanceof L.Polygon).forEach(l=>map.removeLayer(l));
+          layersSurface.current = layersSurface.current.filter(l=>!(l instanceof L.Polygon));
+          const poly = L.polygon(ptsSurface.current,{color:'#8e44ad',weight:2,fillColor:'#9b59b6',fillOpacity:0.25,dashArray:'4,4'}).addTo(map);
+          const m2 = sphericalArea(ptsSurface.current);
+          const km2 = m2/1e6;
+          const ha  = m2/1e4;
+          poly.bindTooltip(
+            km2>=1 ? `${km2.toFixed(2)} km²` : `${ha.toFixed(1)} ha`,
+            {permanent:true,className:'label-mesure'}
+          );
+          layersSurface.current.push(poly);
+          setSurfaceResult(km2>=1?`${km2.toFixed(3)} km²`:`${ha.toFixed(2)} ha (${km2.toFixed(4)} km²)`);
+        }
       }
     },
-    dblclick: () => { if (mode==='mesure') { setMode(null); nettoyerMesure(); } },
+    dblclick: () => {
+      if (modeMesure) { setModeMesure(false); nettoyerMesure(); }
+      if (modeSurface){ setModeSurface(false); nettoyerSurface(); }
+    },
   });
 
-  if (!actif) return null;
+  // Recherche par nom dans toutes les sources
+  const lancerRecherche = useCallback(() => {
+    if (!recherche.trim() || recherche.length < 2) return;
+    nettoyerRecherche();
+    const q = recherche.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    const sources = [
+      ...(geoData.communes?.features||[]).map(f=>({...f,_src:'Commune'})),
+      ...(geoData.regions?.features||[]).map(f=>({...f,_src:'Région'})),
+      ...(geoData.departements?.features||[]).map(f=>({...f,_src:'Département'})),
+      ...(geojsonThematiques.localites?.features||[]).map(f=>({...f,_src:'Localité'})),
+    ];
+    const trouvees = sources.filter(f => {
+      const nom = (f.properties._nom||f.properties.NOM||f.properties.NAME||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+      return nom.includes(q);
+    }).slice(0,10);
+    setResultats(trouvees.map(f=>({
+      nom: f.properties._nom||f.properties.NOM||f.properties.NAME||'?',
+      src: f._src,
+      feature: f,
+    })));
+  }, [recherche, geoData, geojsonThematiques, nettoyerRecherche]);
+
+  const zoomSurResultat = useCallback((feat) => {
+    try {
+      if (feat.geometry.type==='Point') {
+        const [lon,lat] = feat.geometry.coordinates;
+        const mk = L.marker([lat,lon],{icon:L.divIcon({className:'',html:'<div style="background:#e74c3c;width:12px;height:12px;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>',iconAnchor:[6,6]})}).addTo(map);
+        markersRech.current.push(mk);
+        map.flyTo([lat,lon],14,{duration:0.8});
+      } else {
+        const b = L.geoJSON(feat).getBounds();
+        if (b.isValid()) map.flyToBounds(b,{padding:[40,40],maxZoom:14,duration:0.8});
+      }
+    } catch(e){}
+  }, [map]);
+
+  // Recherche par coordonnées
+  const allerAuxCoords = useCallback(() => {
+    const lat = parseFloat(latInput);
+    const lon = parseFloat(lonInput);
+    if (isNaN(lat)||isNaN(lon)) return;
+    if (coordMarker) map.removeLayer(coordMarker);
+    const mk = L.marker([lat,lon],{
+      icon: L.divIcon({className:'',
+        html:'<div style="background:#2471a3;color:white;padding:3px 7px;border-radius:5px;font-size:0.65rem;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3)">📍 '+lat.toFixed(4)+', '+lon.toFixed(4)+'</div>',
+        iconAnchor:[0,0]
+      })
+    }).addTo(map);
+    setCoordMarker(mk);
+    map.flyTo([lat,lon],14,{duration:0.8});
+  }, [latInput, lonInput, map, coordMarker]);
+
+  // Coordinate picker → copie
+  const copierPickerCoords = useCallback(() => {
+    if (!pickerCoords) return;
+    const txt = `${pickerCoords.lat.toFixed(6)}, ${pickerCoords.lng.toFixed(6)}`;
+    navigator.clipboard.writeText(txt).then(()=>{ setCopie(true); setTimeout(()=>setCopie(false),2000); });
+  }, [pickerCoords]);
+
+  const BTN = ({label, actif, onClick}) => (
+    <button onClick={onClick} style={{
+      background:actif?'#1a5276':'#f0f4f8', color:actif?'white':'#1a3a5c',
+      border:'1px solid '+(actif?'#1a5276':'#cdd9e0'), borderRadius:6,
+      padding:'5px 8px', cursor:'pointer', fontSize:'0.76rem',
+      fontWeight:actif?700:400, textAlign:'left', width:'100%',
+    }}>{label}</button>
+  );
+
+  const ONGLETS = [
+    {id:'mesure',   icon:'📏', label:'Distance'},
+    {id:'surface',  icon:'⬜', label:'Surface'},
+    {id:'recherche',icon:'🔍', label:'Recherche'},
+    {id:'coords',   icon:'📍', label:'Coords'},
+  ];
+
   return (
-    <div style={{position:'absolute',top:60,right:10,zIndex:1000,background:'white',
-      borderRadius:8,boxShadow:'0 2px 12px rgba(0,0,0,0.18)',
-      padding:8,display:'flex',flexDirection:'column',gap:4,minWidth:130}}>
-      <div style={{fontSize:'0.7rem',fontWeight:700,color:'#1a3a5c',padding:'0 4px',marginBottom:2}}>OUTILS</div>
-      <button onClick={() => setMode(mode==='mesure'?null:'mesure')}
-        style={{background:mode==='mesure'?'#1a5276':'#f0f4f8',
-          color:mode==='mesure'?'white':'#1a3a5c',
-          border:'1px solid #cdd9e0',borderRadius:6,padding:'5px 10px',
-          cursor:'pointer',fontSize:'0.78rem',textAlign:'left',
-          fontWeight:mode==='mesure'?700:400}}>
-        📏 Mesurer distance
-      </button>
-      {mode==='mesure' && (
-        <div style={{fontSize:'0.68rem',color:'#888',padding:'2px 4px',lineHeight:1.5}}>
-          Cliquez pour ajouter des points.<br/>Double-clic pour terminer.
-        </div>
-      )}
-      <button onClick={nettoyerMesure}
-        style={{background:'#fdf0f0',color:'#c0392b',border:'1px solid #f5c6c6',
-          borderRadius:6,padding:'4px 8px',cursor:'pointer',fontSize:'0.72rem',marginTop:2}}>
-        🗑️ Effacer mesures
-      </button>
+    <div style={{position:'absolute',top:58,right:10,zIndex:1000,background:'white',
+      borderRadius:10,boxShadow:'0 4px 20px rgba(0,0,0,0.18)',
+      width:240,overflow:'hidden',border:'1px solid #dce3ea'}}>
+
+      {/* Header */}
+      <div style={{background:'linear-gradient(135deg,#0d2137,#1a3a5c)',color:'white',
+        padding:'7px 12px',fontSize:'0.72rem',fontWeight:700}}>🛠 OUTILS CARTOGRAPHIQUES</div>
+
+      {/* Onglets */}
+      <div style={{display:'flex',borderBottom:'1px solid #eef2f7',background:'#f7f9fc'}}>
+        {ONGLETS.map(o=>(
+          <button key={o.id} onClick={()=>setOnglet(o.id)}
+            style={{flex:1,padding:'6px 2px',border:'none',cursor:'pointer',
+              background:onglet===o.id?'white':'transparent',
+              borderBottom:onglet===o.id?'2px solid #1a5276':'2px solid transparent',
+              color:onglet===o.id?'#1a3a5c':'#7f8c8d',
+              fontSize:'0.6rem',fontWeight:onglet===o.id?700:400,
+              display:'flex',flexDirection:'column',alignItems:'center',gap:1}}>
+            <span style={{fontSize:'0.9rem'}}>{o.icon}</span>
+            {o.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{padding:'10px 12px',display:'flex',flexDirection:'column',gap:8}}>
+
+        {/* ── Mesure distance ── */}
+        {onglet==='mesure' && (<>
+          <BTN label={modeMesure?'⏹ Arrêter mesure':'▶ Démarrer mesure distance'}
+            actif={modeMesure}
+            onClick={()=>{ if(modeMesure){nettoyerMesure();} setModeMesure(!modeMesure); }}
+          />
+          {modeMesure && <div style={{fontSize:'0.67rem',color:'#5d6d7e',lineHeight:1.6,background:'#eaf4fb',borderRadius:6,padding:'5px 8px'}}>
+            🖱 Cliquez pour ajouter des points<br/>Double-clic pour terminer
+          </div>}
+          <button onClick={nettoyerMesure}
+            style={{background:'#fdf0f0',color:'#c0392b',border:'1px solid #f5c6c6',
+              borderRadius:6,padding:'5px 8px',cursor:'pointer',fontSize:'0.72rem'}}>
+            🗑️ Effacer
+          </button>
+        </>)}
+
+        {/* ── Mesure surface ── */}
+        {onglet==='surface' && (<>
+          <BTN label={modeSurface?'⏹ Arrêter surface':'▶ Démarrer mesure surface'}
+            actif={modeSurface}
+            onClick={()=>{ if(modeSurface){nettoyerSurface();} setModeSurface(!modeSurface); }}
+          />
+          {modeSurface && <div style={{fontSize:'0.67rem',color:'#5d6d7e',lineHeight:1.6,background:'#f5eef8',borderRadius:6,padding:'5px 8px'}}>
+            🖱 Cliquez pour délimiter le polygone<br/>Double-clic pour terminer
+          </div>}
+          {surfaceResult && <div style={{background:'#eaf8ee',border:'1px solid #a9dfbf',borderRadius:7,padding:'7px 10px',textAlign:'center',fontWeight:700,fontSize:'0.82rem',color:'#1e8449'}}>
+            📐 {surfaceResult}
+          </div>}
+          <button onClick={nettoyerSurface}
+            style={{background:'#fdf0f0',color:'#c0392b',border:'1px solid #f5c6c6',
+              borderRadius:6,padding:'5px 8px',cursor:'pointer',fontSize:'0.72rem'}}>
+            🗑️ Effacer
+          </button>
+        </>)}
+
+        {/* ── Recherche par nom ── */}
+        {onglet==='recherche' && (<>
+          <div style={{display:'flex',gap:5}}>
+            <input
+              value={recherche}
+              onChange={e=>setRecherche(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&lancerRecherche()}
+              placeholder="Nom localité, commune…"
+              style={{flex:1,padding:'6px 8px',border:'1.5px solid #dce3ea',
+                borderRadius:7,fontSize:'0.76rem',outline:'none'}}
+            />
+            <button onClick={lancerRecherche}
+              style={{background:'#1a5276',color:'white',border:'none',
+                borderRadius:7,padding:'6px 10px',cursor:'pointer',fontSize:'0.8rem'}}>
+              🔍
+            </button>
+          </div>
+          {resultats.length===0 && recherche.length>1 && (
+            <div style={{fontSize:'0.68rem',color:'#999',textAlign:'center'}}>Aucun résultat</div>
+          )}
+          <div style={{maxHeight:160,overflowY:'auto',display:'flex',flexDirection:'column',gap:3}}>
+            {resultats.map((r,i)=>(
+              <div key={i} onClick={()=>zoomSurResultat(r.feature)}
+                style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+                  padding:'5px 8px',borderRadius:6,cursor:'pointer',background:'#f7f9fc',
+                  border:'1px solid #eef2f7',transition:'background .15s'}}
+                onMouseEnter={e=>e.currentTarget.style.background='#eaf4fb'}
+                onMouseLeave={e=>e.currentTarget.style.background='#f7f9fc'}
+              >
+                <span style={{fontSize:'0.75rem',fontWeight:600,color:'#1a3a5c'}}>{r.nom}</span>
+                <span style={{fontSize:'0.6rem',background:'#1a5276',color:'white',
+                  padding:'1px 5px',borderRadius:9,flexShrink:0}}>{r.src}</span>
+              </div>
+            ))}
+          </div>
+          {resultats.length > 0 && (
+            <button onClick={nettoyerRecherche}
+              style={{background:'#fdf0f0',color:'#c0392b',border:'1px solid #f5c6c6',
+                borderRadius:6,padding:'4px 8px',cursor:'pointer',fontSize:'0.7rem'}}>
+              🗑️ Effacer résultats
+            </button>
+          )}
+        </>)}
+
+        {/* ── Coords ── */}
+        {onglet==='coords' && (<>
+          <div style={{fontSize:'0.67rem',color:'#5d6d7e',fontWeight:700,marginBottom:2}}>Aller aux coordonnées</div>
+          <div style={{display:'flex',gap:5}}>
+            <input value={latInput} onChange={e=>setLatInput(e.target.value)}
+              placeholder="Latitude" type="number" step="0.0001"
+              style={{flex:1,padding:'5px 7px',border:'1.5px solid #dce3ea',
+                borderRadius:7,fontSize:'0.74rem',outline:'none'}}
+            />
+            <input value={lonInput} onChange={e=>setLonInput(e.target.value)}
+              placeholder="Longitude" type="number" step="0.0001"
+              style={{flex:1,padding:'5px 7px',border:'1.5px solid #dce3ea',
+                borderRadius:7,fontSize:'0.74rem',outline:'none'}}
+            />
+          </div>
+          <button onClick={allerAuxCoords}
+            style={{background:'#1a5276',color:'white',border:'none',borderRadius:7,
+              padding:'7px',cursor:'pointer',fontSize:'0.76rem',fontWeight:600}}>
+            📍 Centrer sur ces coordonnées
+          </button>
+
+          <hr style={{border:'none',borderTop:'1px solid #eef2f7',margin:'4px 0'}}/>
+          <div style={{fontSize:'0.67rem',color:'#5d6d7e',fontWeight:700,marginBottom:2}}>Coordinate Picker</div>
+          <button onClick={()=>setPickerActif(!pickerActif)}
+            style={{
+              background:pickerActif?'#8e44ad':'#f0f4f8',
+              color:pickerActif?'white':'#1a3a5c',
+              border:'1px solid '+(pickerActif?'#8e44ad':'#cdd9e0'),
+              borderRadius:6,padding:'6px 8px',cursor:'pointer',
+              fontSize:'0.76rem',fontWeight:pickerActif?700:400,
+            }}>
+            {pickerActif?'⏹ Désactiver Picker':'🖱 Activer Coordinate Picker'}
+          </button>
+          {pickerActif && <div style={{fontSize:'0.67rem',color:'#6c3483',background:'#f5eef8',
+            borderRadius:6,padding:'5px 8px',lineHeight:1.6}}>
+            Cliquez sur la carte pour capturer les coordonnées
+          </div>}
+          {pickerCoords && (
+            <div style={{background:'#eaf4fb',border:'1px solid #aed6f1',borderRadius:7,
+              padding:'7px 10px',display:'flex',flexDirection:'column',gap:4}}>
+              <div style={{fontFamily:'monospace',fontSize:'0.75rem',fontWeight:700,color:'#1a3a5c'}}>
+                {pickerCoords.lat.toFixed(6)}, {pickerCoords.lng.toFixed(6)}
+              </div>
+              <button onClick={copierPickerCoords}
+                style={{background:copie?'#1e8449':'#1a5276',color:'white',border:'none',
+                  borderRadius:6,padding:'4px 8px',cursor:'pointer',fontSize:'0.7rem',
+                  transition:'background .2s'}}>
+                {copie?'✅ Copié !':'📋 Copier les coordonnées'}
+              </button>
+            </div>
+          )}
+        </>)}
+
+      </div>
     </div>
   );
 }
@@ -213,7 +512,9 @@ function CoucheThematique({ id, data, couleur }) {
   );
 }
 
-// ===== COMPOSANT PRINCIPAL =====
+// ══════════════════════════════════════════════════════════════════
+// COMPOSANT PRINCIPAL
+// ══════════════════════════════════════════════════════════════════
 export default function CarteV3({
   geoData, featRegion, featDep, featArr, featCommune,
   visRegions, visDeps, visArrs, visCommunes, visEtiquettes,
@@ -224,10 +525,12 @@ export default function CarteV3({
   couleurCommune, mapRef,
   isMobile, onOpenDrawerGauche, onOpenDrawerDroit,
 }) {
-  const [coords, setCoords] = useState(null);
-  const [zoom,   setZoom]   = useState(7);
-  const [fond,   setFond]   = useState('osm');
-  const [outils, setOutils] = useState(false);
+  const [coords, setCoords]         = useState(null);
+  const [zoom,   setZoom]           = useState(7);
+  const [fond,   setFond]           = useState('osm');
+  const [outils, setOutils]         = useState(false);
+  const [pickerActif, setPickerActif] = useState(false);
+  const [pickerCoords, setPickerCoords] = useState(null);
 
   const zoomTarget = featCommune || featArr || featDep || featRegion;
   const fondConf   = FONDS.find(f=>f.id===fond)||FONDS[0];
@@ -269,11 +572,14 @@ export default function CarteV3({
 
   const localitesData = geojsonThematiques['localites'];
 
+  // Curseur picker
+  const cursorStyle = pickerActif ? { cursor:'crosshair' } : {};
+
   return (
-    <div className="carte-wrapper" ref={mapRef} style={{position:'relative'}}>
+    <div className="carte-wrapper" ref={mapRef} style={{position:'relative',...cursorStyle}}>
       {chargement && <div className="carte-spinner">⏳ Chargement…</div>}
 
-      {/* Bouton outils (desktop) */}
+      {/* Bouton outils desktop */}
       {!isMobile && (
         <button onClick={()=>setOutils(!outils)}
           style={{position:'absolute',top:10,right:10,zIndex:1001,
@@ -289,15 +595,19 @@ export default function CarteV3({
       {/* Boutons flottants mobile */}
       {isMobile && (
         <div className="mobile-fab-bar">
-          <button className="mobile-fab" onClick={onOpenDrawerGauche} title="Navigation">
-            🗺️
-          </button>
-          <button className="mobile-fab" onClick={()=>setOutils(!outils)} title="Outils">
-            🛠
-          </button>
-          <button className="mobile-fab" onClick={onOpenDrawerDroit} title="Couches">
-            🗹
-          </button>
+          <button className="mobile-fab" onClick={onOpenDrawerGauche} title="Navigation">🗺️</button>
+          <button className="mobile-fab" onClick={()=>setOutils(!outils)} title="Outils">🛠</button>
+          <button className="mobile-fab" onClick={onOpenDrawerDroit} title="Couches">🗹</button>
+        </div>
+      )}
+
+      {/* Indicateur picker actif */}
+      {pickerActif && (
+        <div style={{position:'absolute',top:50,left:'50%',transform:'translateX(-50%)',
+          zIndex:1001,background:'rgba(142,68,173,0.9)',color:'white',
+          padding:'4px 14px',borderRadius:20,fontSize:'0.72rem',fontWeight:700,
+          pointerEvents:'none',boxShadow:'0 2px 10px rgba(0,0,0,0.2)'}}>
+          🖱 Picker actif — Cliquez sur la carte
         </div>
       )}
 
@@ -305,7 +615,12 @@ export default function CarteV3({
         style={{height:'100%',width:'100%'}} zoomControl={true} doubleClickZoom={false}>
         {fondConf.url && <TileLayer key={fond} url={fondConf.url} attribution={fondConf.attr} opacity={0.5} />}
         <AutoZoom feature={zoomTarget} />
-        <CoordsBar onCoords={setCoords} onZoom={setZoom} />
+        <AutoZoomImport importData={importData} />
+        <CoordsBar
+          onCoords={setCoords} onZoom={setZoom}
+          pickerActif={pickerActif}
+          onPickerClick={latlng => setPickerCoords(latlng)}
+        />
 
         {/* Couches admin */}
         {visRegions && geoData.regions && (
@@ -331,7 +646,7 @@ export default function CarteV3({
         <EtiquetteLayer data={geoData.arrondissements} niveau="arrondissements" cssClass="leaflet-label-arr"     visible={visEtiquettes.arrondissements} zoom={zoom} />
         <EtiquetteLayer data={geoData.communes}        niveau="communes"        cssClass="leaflet-label-commune" visible={visEtiquettes.communes}        zoom={zoom} />
 
-        {/* Localites points + etiquettes */}
+        {/* Localités */}
         {couchesActives.includes('localites') && localitesData?.features?.length > 0 && (
           <GeoJSON key={`th-localites-pts-${localitesData.features.length}`} data={localitesData}
             pointToLayer={(f,latlng) => L.circleMarker(latlng, {
@@ -348,7 +663,7 @@ export default function CarteV3({
           <EtiquettesLocalites data={localitesData} visible={visEtiquettes.localites} zoom={zoom} />
         )}
 
-        {/* Couches thematiques */}
+        {/* Couches thématiques */}
         {couchesActives.filter(id=>id!=='localites').map(id => {
           const catItem = catalogue.find(c=>c.id===id);
           return <CoucheThematique key={`th-${id}`} id={id}
@@ -367,15 +682,24 @@ export default function CarteV3({
           />
         )}
 
-        {outils && <OutilsDessin actif={outils} />}
+        {/* Panel Outils (dans MapContainer pour accéder à useMap) */}
+        {outils && (
+          <PanelOutils
+            geoData={geoData}
+            geojsonThematiques={geojsonThematiques}
+            pickerActif={pickerActif}
+            setPickerActif={setPickerActif}
+            pickerCoords={pickerCoords}
+          />
+        )}
       </MapContainer>
 
-      {outils && <BarreFond fondActif={fond} setFond={setFond} />}
+      <BarreFond fondActif={fond} setFond={setFond} />
 
       {coords && (
         <div className="coords-bar">
-          <span>📍 {coords.lat.toFixed(5)} | {coords.lng.toFixed(5)}</span>
-          <span>Zoom {zoom}</span>
+          <span>📍 {coords.lat.toFixed(5)} | {coords.lng.toFixed(5)}</span>
+          <span>Zoom {zoom}</span>
         </div>
       )}
     </div>
