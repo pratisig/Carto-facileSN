@@ -25,11 +25,26 @@ const CATALOGUE = [
   { groupe:'Frontières',  id:'frontieres',       label:'Frontières',        couleur:'#8e44ad', icon:'🗺️' },
 ];
 
+// Hook responsive
+function useIsMobile(breakpoint = 900) {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, [breakpoint]);
+  return isMobile;
+}
+
 export default function App() {
   const {
     geoData, chargement, erreur, apiUrl,
     getRegions, getDepartements, getArrondissements, getCommunes, getFeatureByPcode,
   } = useGeoData();
+
+  const isMobile = useIsMobile();
+  const [drawerGauche, setDrawerGauche] = useState(false);
+  const [drawerDroit,  setDrawerDroit]  = useState(false);
 
   const [selRegion,  setSelRegion]  = useState('');
   const [selDep,     setSelDep]     = useState('');
@@ -49,14 +64,11 @@ export default function App() {
   }, []);
 
   const [couleurCommune, setCouleurCommune] = useState('#e74c3c');
-
-  // localites actives par defaut (comme les couches admin)
   const [couchesActives,     setCouchesActives]     = useState(['localites']);
   const [geojsonThematiques, setGeojsonThematiques] = useState({});
   const [prechauffage,       setPrechauffage]       = useState(true);
 
   const geojsonCacheRef = useRef({});
-
   const [importData,  setImportData]  = useState(null);
   const [showExport,  setShowExport]  = useState(false);
   const inputImportRef = useRef(null);
@@ -78,28 +90,23 @@ export default function App() {
   const onCommuneChange = useCallback(v => setSelCommune(v), []);
   const onReset         = useCallback(() => { setSelRegion(''); setSelDep(''); setSelArr(''); setSelCommune(''); }, []);
 
-  // Charger une couche avec retry (Render cold start ~30s)
   const chargerCouche = useCallback(async (id, tentative = 1) => {
     if (geojsonCacheRef.current[id]) return;
     try {
       const r = await fetch(`${API}/api/couches/thematique/${id}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
-      if (!data?.features) throw new Error('Pas de features dans la réponse');
-      console.log(`[App] ✔ ${id}: ${data.features.length} features`);
+      if (!data?.features) throw new Error('Pas de features');
       geojsonCacheRef.current[id] = data;
       setGeojsonThematiques(prev => ({ ...prev, [id]: data }));
     } catch(e) {
-      console.warn(`[App] Erreur ${id} (tentative ${tentative}):`, e.message);
       if (tentative < 3) {
         await new Promise(res => setTimeout(res, tentative * 8000));
         return chargerCouche(id, tentative + 1);
       }
-      console.error(`[App] ✕ Échec définitif pour ${id}`);
     }
   }, []);
 
-  // Précharger toutes les couches en arrière-plan
   useEffect(() => {
     setPrechauffage(true);
     Promise.all(CATALOGUE.map(c => chargerCouche(c.id)))
@@ -142,15 +149,20 @@ export default function App() {
           geojson = { type: 'FeatureCollection', features };
         }
         if (geojson) setImportData(geojson);
-      } catch(err) { alert('Erreur lecture fichier : ' + err.message); }
+      } catch(err) { alert('Erreur : ' + err.message); }
     };
     reader.readAsText(file);
     e.target.value = '';
   }, []);
 
+  // Fermer drawers quand on change de taille
+  useEffect(() => {
+    if (!isMobile) { setDrawerGauche(false); setDrawerDroit(false); }
+  }, [isMobile]);
+
   return (
     <div className="app-container">
-      <Header />
+      <Header isMobile={isMobile} />
 
       {chargement && (
         <div className="banniere-info">⏳ Connexion à l’API… ({apiUrl})</div>
@@ -159,43 +171,56 @@ export default function App() {
         <div className="banniere-erreur">
           {erreur}
           {erreur.includes('introuvable') && (
-            <span style={{marginLeft:12, fontSize:'0.78rem'}}>
-              → Vérifiez le service sur 
-              <a href="https://dashboard.render.com" target="_blank" rel="noreferrer"
-                style={{color:'#c0392b', fontWeight:700}}>dashboard.render.com</a>
+            <span style={{marginLeft:8, fontSize:'0.75rem'}}>
+              → <a href="https://dashboard.render.com" target="_blank" rel="noreferrer"
+                style={{color:'#c0392b',fontWeight:700}}>Render dashboard</a>
             </span>
           )}
         </div>
       )}
 
       <div className="main-layout">
-        <PanneauGauche
-          regions={regions}               departements={departements}
-          arrondissements={arrondissements}   communes={communes}
-          selRegion={selRegion}           selDep={selDep}
-          selArr={selArr}                 selCommune={selCommune}
-          onRegionChange={onRegionChange} onDepChange={onDepChange}
-          onArrChange={onArrChange}       onCommuneChange={onCommuneChange}
-          onReset={onReset}
-          featRegion={featRegion}   featDep={featDep}
-          featArr={featArr}         featCommune={featCommune}
-          visRegions={visRegions}   setVisRegions={setVisRegions}
-          visDeps={visDeps}         setVisDeps={setVisDeps}
-          visArrs={visArrs}         setVisArrs={setVisArrs}
-          visCommunes={visCommunes} setVisCommunes={setVisCommunes}
-          visEtiquettes={visEtiquettes} setVisEtiquette={setVisEtiquette}
-          couleurCommune={couleurCommune} setCouleurCommune={setCouleurCommune}
-          importData={importData}
-          onImportClick={() => inputImportRef.current?.click()}
-          onImportClear={() => setImportData(null)}
-          onExportClick={() => setShowExport(true)}
-          loading={chargement}
-          apiUrl={apiUrl}
-        />
+
+        {/* Overlay mobile pour fermer les drawers */}
+        {isMobile && (drawerGauche || drawerDroit) && (
+          <div
+            className="drawer-overlay"
+            onClick={() => { setDrawerGauche(false); setDrawerDroit(false); }}
+          />
+        )}
+
+        {/* Panneau gauche — drawer sur mobile */}
+        <div className={`panneau-gauche${isMobile ? (drawerGauche ? ' drawer-open' : ' drawer-hidden') : ''}`}>
+          <PanneauGauche
+            regions={regions}               departements={departements}
+            arrondissements={arrondissements}   communes={communes}
+            selRegion={selRegion}           selDep={selDep}
+            selArr={selArr}                 selCommune={selCommune}
+            onRegionChange={onRegionChange} onDepChange={onDepChange}
+            onArrChange={onArrChange}       onCommuneChange={onCommuneChange}
+            onReset={onReset}
+            featRegion={featRegion}   featDep={featDep}
+            featArr={featArr}         featCommune={featCommune}
+            visRegions={visRegions}   setVisRegions={setVisRegions}
+            visDeps={visDeps}         setVisDeps={setVisDeps}
+            visArrs={visArrs}         setVisArrs={setVisArrs}
+            visCommunes={visCommunes} setVisCommunes={setVisCommunes}
+            visEtiquettes={visEtiquettes} setVisEtiquette={setVisEtiquette}
+            couleurCommune={couleurCommune} setCouleurCommune={setCouleurCommune}
+            importData={importData}
+            onImportClick={() => inputImportRef.current?.click()}
+            onImportClear={() => setImportData(null)}
+            onExportClick={() => setShowExport(true)}
+            loading={chargement}
+            isMobile={isMobile}
+            onClose={() => setDrawerGauche(false)}
+          />
+        </div>
 
         <input ref={inputImportRef} type="file" accept=".geojson,.json,.csv"
           style={{display:'none'}} onChange={handleImportFile} />
 
+        {/* Carte */}
         <CarteV3
           geoData={geoData}
           featRegion={featRegion}  featDep={featDep}
@@ -215,15 +240,24 @@ export default function App() {
           onCommuneClick={onCommuneChange}
           couleurCommune={couleurCommune}
           mapRef={mapRef}
+          isMobile={isMobile}
+          onOpenDrawerGauche={() => setDrawerGauche(true)}
+          onOpenDrawerDroit={() => setDrawerDroit(true)}
         />
 
-        <GestionnaireCouches
-          catalogue={CATALOGUE}
-          couchesActives={couchesActives}
-          toggleCouche={toggleCouche}
-          geojsonThematiques={geojsonThematiques}
-          prechauffage={prechauffage}
-        />
+        {/* Panneau droit — drawer sur mobile */}
+        <div className={`panneau-droit-wrap${isMobile ? (drawerDroit ? ' drawer-open' : ' drawer-hidden') : ''}`}>
+          <GestionnaireCouches
+            catalogue={CATALOGUE}
+            couchesActives={couchesActives}
+            toggleCouche={toggleCouche}
+            geojsonThematiques={geojsonThematiques}
+            prechauffage={prechauffage}
+            isMobile={isMobile}
+            onClose={() => setDrawerDroit(false)}
+          />
+        </div>
+
       </div>
 
       {showExport && (

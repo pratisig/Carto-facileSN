@@ -5,7 +5,7 @@ function ToggleRow({ dot, label, checked, onChange }) {
     <div className="toggle-row" onClick={() => onChange(!checked)}>
       <div className="toggle-row-label">
         <span className="level-dot" style={{ background: dot }} />
-        <span style={{ fontSize: '0.78rem', color: '#2c3e50' }}>{label}</span>
+        <span style={{ fontSize: '0.8rem', color: '#2c3e50' }}>{label}</span>
       </div>
       <label className="toggle-switch" onClick={e => e.stopPropagation()}>
         <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
@@ -25,25 +25,30 @@ export default function PanneauGauche({
   visEtiquettes, setVisEtiquette,
   couleurCommune, setCouleurCommune,
   importData, onImportClick, onImportClear, onExportClick,
-  loading,
+  loading, isMobile, onClose,
 }) {
   const zoneActive = featCommune || featArr || featDep || featRegion;
   const nomZone    = zoneActive?.properties?._nom || '';
   const pcodeZone  = zoneActive?.properties?._pcode || '';
 
   return (
-    <div className="panneau-gauche">
+    <div className="panneau-gauche-inner">
+
+      {/* Bouton fermeture drawer mobile */}
+      {isMobile && (
+        <div className="drawer-header">
+          <span className="drawer-title">🗺️ Navigation</span>
+          <button className="drawer-close" onClick={onClose}>✕</button>
+        </div>
+      )}
 
       {/* ===== Zone géographique ===== */}
       <div className="pg-section">
-        <div className="pg-section-title">
-          <span>🗺️</span> Zone géographique
-        </div>
+        <div className="pg-section-title"><span>🗺️</span> Zone géographique</div>
 
         <div className="cascade-item">
           <div className="cascade-label">
-            Région
-            <span className="cascade-count">{regions.length}</span>
+            Région <span className="cascade-count">{regions.length}</span>
           </div>
           <select
             className={`select-field${selRegion ? ' has-value' : ''}`}
@@ -57,8 +62,7 @@ export default function PanneauGauche({
 
         <div className="cascade-item">
           <div className="cascade-label">
-            Département
-            <span className="cascade-count">{departements.length}</span>
+            Département <span className="cascade-count">{departements.length}</span>
           </div>
           <select
             className={`select-field${selDep ? ' has-value' : ''}`}
@@ -73,8 +77,7 @@ export default function PanneauGauche({
 
         <div className="cascade-item">
           <div className="cascade-label">
-            Arrondissement
-            <span className="cascade-count">{arrondissements.length}</span>
+            Arrondissement <span className="cascade-count">{arrondissements.length}</span>
           </div>
           <select
             className={`select-field${selArr ? ' has-value' : ''}`}
@@ -89,8 +92,7 @@ export default function PanneauGauche({
 
         <div className="cascade-item">
           <div className="cascade-label">
-            Commune
-            <span className="cascade-count">{communes.length}</span>
+            Commune <span className="cascade-count">{communes.length}</span>
           </div>
           <select
             className={`select-field${selCommune ? ' has-value' : ''}`}
@@ -107,7 +109,7 @@ export default function PanneauGauche({
           <div className="zone-active-card">
             <div className="zone-active-nom">{nomZone}</div>
             <div className="zone-active-pcode">{pcodeZone}</div>
-            <button className="btn-reset" onClick={onReset}>✕ Réinitialiser la sélection</button>
+            <button className="btn-reset" onClick={onReset}>✕ Réinitialiser</button>
           </div>
         )}
       </div>
@@ -115,31 +117,25 @@ export default function PanneauGauche({
       {/* ===== Couleur commune ===== */}
       {selCommune && (
         <div className="pg-section">
-          <div className="pg-section-title"><span>🎨</span> Couleur de la commune</div>
+          <div className="pg-section-title"><span>🎨</span> Couleur commune</div>
           <div className="couleur-commune-row">
-            <input
-              type="color"
-              value={couleurCommune}
-              onChange={e => setCouleurCommune(e.target.value)}
-              title="Choisir la couleur de surbrillance"
-            />
+            <input type="color" value={couleurCommune}
+              onChange={e => setCouleurCommune(e.target.value)} />
             <span style={{ fontSize: '0.76rem', color: '#4a6285' }}>Surbrillance</span>
-            <button
-              className="btn-couleur-reset"
-              onClick={() => setCouleurCommune('#e74c3c')}
-            >↺ Défaut</button>
+            <button className="btn-couleur-reset"
+              onClick={() => setCouleurCommune('#e74c3c')}>↺ Défaut</button>
           </div>
         </div>
       )}
 
-      {/* ===== Visibilité couches admin ===== */}
+      {/* ===== Visibilité ===== */}
       <div className="pg-section">
         <div className="pg-section-title"><span>👁️</span> Visibilité</div>
         <ToggleRow dot="#95a5a6" label="Régions"         checked={visRegions}  onChange={setVisRegions}  />
         <ToggleRow dot="#7f8c8d" label="Départements"    checked={visDeps}     onChange={setVisDeps}     />
         <ToggleRow dot="#aab7b8" label="Arrondissements" checked={visArrs}     onChange={setVisArrs}     />
         <ToggleRow dot="#e74c3c" label="Communes"        checked={visCommunes} onChange={setVisCommunes} />
-        <ToggleRow dot="#c0392b" label="Localités (SHP)" checked={true} onChange={() => {}} />
+        <ToggleRow dot="#c0392b" label="Localités (SHP)" checked={true}       onChange={() => {}}       />
       </div>
 
       {/* ===== Étiquettes ===== */}
@@ -149,9 +145,9 @@ export default function PanneauGauche({
         <ToggleRow dot="#7f8c8d" label="Noms départements"    checked={visEtiquettes.departements}    onChange={v => setVisEtiquette('departements', v)}    />
         <ToggleRow dot="#7f8c8d" label="Noms arrondissements" checked={visEtiquettes.arrondissements} onChange={v => setVisEtiquette('arrondissements', v)} />
         <ToggleRow dot="#e74c3c" label="Noms communes"        checked={visEtiquettes.communes}        onChange={v => setVisEtiquette('communes', v)}        />
-        <ToggleRow dot="#c0392b" label="Noms localités ⚠️¹"  checked={visEtiquettes.localites}       onChange={v => setVisEtiquette('localites', v)}       />
+        <ToggleRow dot="#c0392b" label="Noms localités ¹"    checked={visEtiquettes.localites}       onChange={v => setVisEtiquette('localites', v)}       />
       </div>
-      <div className="pg-note">¹ Noms localités visibles à partir du zoom département (zoom ≥ 9)</div>
+      <div className="pg-note">¹ Visibles à partir du zoom département (zoom ≥ 9)</div>
 
       {/* ===== Données ===== */}
       <div className="pg-section">

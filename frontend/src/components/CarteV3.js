@@ -1,21 +1,12 @@
 /**
- * CarteV3 — Carte principale Carto-facileSN
- *
- * Couches:
- *  - Admin polygones (regions, deps, arrs, communes)
- *  - Etiquettes zoom-dependantes par niveau
- *  - Localites: points CircleMarker + etiquettes Arial 6 noires visibles a partir zoom 9
- *  - Couches thematiques: style derive du CATALOGUE (couleurs synchro)
- *  - Import GeoJSON/CSV
- * Outils: mesure distance, fond de carte
+ * CarteV3 — Carte principale responsive
+ * - Mobile: boutons flottants en bas pour ouvrir les drawers
+ * - Desktop: panneaux latéraux fixes
  */
 import React, { useEffect, useCallback, useRef, useState } from 'react';
-import {
-  MapContainer, TileLayer, GeoJSON, CircleMarker, useMap, useMapEvents,
-} from 'react-leaflet';
+import { MapContainer, TileLayer, GeoJSON, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 
-// ── Styles polygones admin ────────────────────────────────────────────────────
 const STYLES_BASE = {
   regions:         { color:'#7f8c8d', weight:2,   fillColor:'#bdc3c7', fillOpacity:0.35 },
   departements:    { color:'#7f8c8d', weight:1.5, fillColor:'#bdc3c7', fillOpacity:0.20 },
@@ -28,12 +19,9 @@ const STYLES_SEL_BASE = {
   arrondissements: { color:'#0e6655', weight:3.5, fillColor:'#117a65', fillOpacity:0.55 },
 };
 
-// Couches LINE (pas de fill)
 const LIGNES_TH = new Set(['routes','chemin_fer','cours_eau','courbes_niveau','frontieres']);
-// Couches POINT (CircleMarker)
 const POINTS_TH = new Set(['localites','aeroports','points_eau']);
 
-// Fonds de carte
 const FONDS = [
   { id:'osm',   label:'OpenStreetMap',  url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',    attr:'&copy; OpenStreetMap' },
   { id:'topo',  label:'OpenTopoMap',    url:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',      attr:'&copy; OpenTopoMap' },
@@ -43,13 +31,8 @@ const FONDS = [
   { id:'none',  label:'Aucun fond',     url:'', attr:'' },
 ];
 
-// Zoom minimum par niveau d'etiquette
-// localites: 9 = echelle departement (comme demande)
-const ZOOM_MIN = {
-  regions: 5, departements: 8, arrondissements: 10, communes: 11, localites: 9,
-};
+const ZOOM_MIN = { regions:5, departements:8, arrondissements:10, communes:11, localites:9 };
 
-// ── AutoZoom ─────────────────────────────────────────────────────────────────
 function AutoZoom({ feature }) {
   const map = useMap();
   const prev = useRef(null);
@@ -64,7 +47,6 @@ function AutoZoom({ feature }) {
   return null;
 }
 
-// ── Coords + zoom ────────────────────────────────────────────────────────────
 function CoordsBar({ onCoords, onZoom }) {
   const map = useMap();
   useMapEvents({
@@ -74,7 +56,6 @@ function CoordsBar({ onCoords, onZoom }) {
   return null;
 }
 
-// ── Etiquettes zoom-dependantes (admin polygones) ─────────────────────────────
 function EtiquetteLayer({ data, cssClass, niveau, visible, zoom }) {
   if (!visible || !data?.features) return null;
   if (zoom < ZOOM_MIN[niveau]) return null;
@@ -86,17 +67,12 @@ function EtiquetteLayer({ data, cssClass, niveau, visible, zoom }) {
       onEachFeature={(feature, layer) => {
         const nom = feature.properties._nom || '';
         if (!nom) return;
-        layer.bindTooltip(nom, {
-          permanent: true, direction:'center',
-          className: cssClass, sticky: false,
-        });
+        layer.bindTooltip(nom, { permanent:true, direction:'center', className:cssClass, sticky:false });
       }}
     />
   );
 }
 
-// ── Etiquettes localites (Points) ─────────────────────────────────────────────
-// Arial 6px noir, visibles seulement a partir de zoom 9 (echelle departement)
 function EtiquettesLocalites({ data, visible, zoom }) {
   if (!visible || !data?.features) return null;
   if (zoom < ZOOM_MIN.localites) return null;
@@ -110,18 +86,14 @@ function EtiquettesLocalites({ data, visible, zoom }) {
         const nom = feature.properties._nom || feature.properties.NOM || feature.properties.NAME || '';
         if (!nom) return;
         layer.bindTooltip(nom, {
-          permanent: true,
-          direction: 'right',
-          offset: [4, 0],
-          className: 'leaflet-label-localite',
-          sticky: false,
+          permanent:true, direction:'right', offset:[4,0],
+          className:'leaflet-label-localite', sticky:false,
         });
       }}
     />
   );
 }
 
-// ── Outil mesure ─────────────────────────────────────────────────────────────
 function OutilsDessin({ actif }) {
   const map = useMap();
   const [mode, setMode] = useState(null);
@@ -132,28 +104,25 @@ function OutilsDessin({ actif }) {
   const nettoyerMesure = useCallback(() => {
     markersMesure.current.forEach(m => map.removeLayer(m));
     lignesMesure.current.forEach(l => map.removeLayer(l));
-    markersMesure.current = [];
-    lignesMesure.current = [];
-    ptsMesure.current = [];
+    markersMesure.current = []; lignesMesure.current = []; ptsMesure.current = [];
   }, [map]);
 
   useMapEvents({
     click: (e) => {
-      if (mode === 'mesure') {
-        const pt = e.latlng;
-        ptsMesure.current.push(pt);
-        const m = L.circleMarker(pt, {radius:4, color:'#e74c3c', fillOpacity:1}).addTo(map);
-        markersMesure.current.push(m);
-        if (ptsMesure.current.length >= 2) {
-          const pts = ptsMesure.current;
-          const dist  = pts[pts.length-2].distanceTo(pts[pts.length-1]);
-          const total = pts.reduce((acc, p, i) => i===0?0:acc+pts[i-1].distanceTo(p), 0);
-          const l = L.polyline([pts[pts.length-2], pt], {color:'#e74c3c', weight:2, dashArray:'5,5'}).addTo(map);
-          l.bindTooltip(`${(dist/1000).toFixed(2)} km (total: ${(total/1000).toFixed(2)} km)`, {
-            permanent:true, className:'label-mesure',
-          });
-          lignesMesure.current.push(l);
-        }
+      if (mode !== 'mesure') return;
+      const pt = e.latlng;
+      ptsMesure.current.push(pt);
+      markersMesure.current.push(
+        L.circleMarker(pt, {radius:4,color:'#e74c3c',fillOpacity:1}).addTo(map)
+      );
+      if (ptsMesure.current.length >= 2) {
+        const pts = ptsMesure.current;
+        const dist  = pts[pts.length-2].distanceTo(pts[pts.length-1]);
+        const total = pts.reduce((acc,p,i) => i===0?0:acc+pts[i-1].distanceTo(p), 0);
+        const l = L.polyline([pts[pts.length-2], pt], {color:'#e74c3c',weight:2,dashArray:'5,5'}).addTo(map);
+        l.bindTooltip(`${(dist/1000).toFixed(2)} km (total: ${(total/1000).toFixed(2)} km)`,
+          {permanent:true, className:'label-mesure'});
+        lignesMesure.current.push(l);
       }
     },
     dblclick: () => { if (mode==='mesure') { setMode(null); nettoyerMesure(); } },
@@ -161,21 +130,16 @@ function OutilsDessin({ actif }) {
 
   if (!actif) return null;
   return (
-    <div style={{
-      position:'absolute', top:60, right:10, zIndex:1000,
-      background:'white', borderRadius:8, boxShadow:'0 2px 12px rgba(0,0,0,0.18)',
-      padding:8, display:'flex', flexDirection:'column', gap:4, minWidth:130,
-    }}>
-      <div style={{fontSize:'0.7rem',fontWeight:700,color:'#1a3a5c',marginBottom:2,padding:'0 4px'}}>OUTILS</div>
-      <button
-        onClick={() => setMode(mode==='mesure' ? null : 'mesure')}
-        style={{
-          background: mode==='mesure' ? '#1a5276' : '#f0f4f8',
-          color:      mode==='mesure' ? 'white'   : '#1a3a5c',
-          border:'1px solid #cdd9e0', borderRadius:6,
-          padding:'5px 10px', cursor:'pointer', fontSize:'0.78rem',
-          fontWeight: mode==='mesure' ? 700 : 400, textAlign:'left',
-        }}>
+    <div style={{position:'absolute',top:60,right:10,zIndex:1000,background:'white',
+      borderRadius:8,boxShadow:'0 2px 12px rgba(0,0,0,0.18)',
+      padding:8,display:'flex',flexDirection:'column',gap:4,minWidth:130}}>
+      <div style={{fontSize:'0.7rem',fontWeight:700,color:'#1a3a5c',padding:'0 4px',marginBottom:2}}>OUTILS</div>
+      <button onClick={() => setMode(mode==='mesure'?null:'mesure')}
+        style={{background:mode==='mesure'?'#1a5276':'#f0f4f8',
+          color:mode==='mesure'?'white':'#1a3a5c',
+          border:'1px solid #cdd9e0',borderRadius:6,padding:'5px 10px',
+          cursor:'pointer',fontSize:'0.78rem',textAlign:'left',
+          fontWeight:mode==='mesure'?700:400}}>
         📏 Mesurer distance
       </button>
       {mode==='mesure' && (
@@ -192,10 +156,9 @@ function OutilsDessin({ actif }) {
   );
 }
 
-// ── Fond de carte ────────────────────────────────────────────────────────────
 function BarreFond({ fondActif, setFond }) {
   const [open, setOpen] = useState(false);
-  const fond = FONDS.find(f=>f.id===fondActif) || FONDS[0];
+  const fond = FONDS.find(f=>f.id===fondActif)||FONDS[0];
   return (
     <div style={{position:'absolute',bottom:36,right:10,zIndex:1000}}>
       <button onClick={()=>setOpen(!open)}
@@ -206,9 +169,9 @@ function BarreFond({ fondActif, setFond }) {
       </button>
       {open && (
         <div style={{position:'absolute',bottom:36,right:0,background:'white',
-          border:'1.5px solid #cdd9e0',borderRadius:8,boxShadow:'0 4px 16px rgba(0,0,0,0.18)',
-          minWidth:180,overflow:'hidden'}}>
-          {FONDS.map(f => (
+          border:'1.5px solid #cdd9e0',borderRadius:8,
+          boxShadow:'0 4px 16px rgba(0,0,0,0.18)',minWidth:180,overflow:'hidden'}}>
+          {FONDS.map(f=>(
             <div key={f.id} onClick={()=>{setFond(f.id);setOpen(false);}}
               style={{padding:'7px 14px',cursor:'pointer',fontSize:'0.8rem',
                 background:f.id===fondActif?'#eaf0f6':'white',
@@ -224,74 +187,42 @@ function BarreFond({ fondActif, setFond }) {
   );
 }
 
-// ── Rendu d'une couche thematique ─────────────────────────────────────────────
-// Utilise la couleur du CATALOGUE pour etre toujours synchro
-function CoucheThematique({ id, data, couleur, zoom }) {
+function CoucheThematique({ id, data, couleur }) {
   if (!data?.features?.length) return null;
-
   const isLine  = LIGNES_TH.has(id);
   const isPoint = POINTS_TH.has(id);
-
-  // Style commun
-  const styleFn = () => ({
-    color:       couleur,
-    weight:      isLine ? 1.6 : 1,
-    fillColor:   couleur,
-    fillOpacity: isLine ? 0 : 0.35,
-    opacity:     0.85,
-  });
-
+  const styleFn = () => ({ color:couleur, weight:isLine?1.6:1, fillColor:couleur, fillOpacity:isLine?0:0.35, opacity:0.85 });
   const popupFn = (f, layer) => {
-    const lignes = Object.entries(f.properties || {})
-      .filter(([k, v]) => v && !k.startsWith('_'))
-      .slice(0, 6)
-      .map(([k, v]) => `<b>${k}</b>: ${v}`)
-      .join('<br/>');
-    if (lignes) layer.bindPopup(`<div style="font-size:0.8rem;max-width:200px">${lignes}</div>`);
+    const lignes = Object.entries(f.properties||{}).filter(([k,v])=>v&&!k.startsWith('_'))
+      .slice(0,6).map(([k,v])=>`<b>${k}</b>: ${v}`).join('<br/>');
+    if (lignes) layer.bindPopup(`<div style="font-size:0.8rem;max-width:220px">${lignes}</div>`);
   };
-
-  // Localites et autres points = CircleMarker
   if (isPoint) {
     return (
-      <GeoJSON
-        key={`th-${id}-${data.features.length}`}
-        data={data}
-        pointToLayer={(f, latlng) => L.circleMarker(latlng, {
-          radius:      id === 'localites' ? 2.5 : 4,
-          color:       couleur,
-          weight:      1,
-          fillColor:   couleur,
-          fillOpacity: 0.75,
-          opacity:     0.9,
+      <GeoJSON key={`th-${id}-${data.features.length}`} data={data}
+        pointToLayer={(f,latlng) => L.circleMarker(latlng, {
+          radius:id==='localites'?2.5:4, color:couleur, weight:1,
+          fillColor:couleur, fillOpacity:0.75, opacity:0.9,
         })}
-        onEachFeature={popupFn}
-      />
+        onEachFeature={popupFn} />
     );
   }
-
-  // Lignes et polygones = GeoJSON standard
   return (
-    <GeoJSON
-      key={`th-${id}-${data.features.length}`}
-      data={data}
-      style={styleFn}
-      onEachFeature={popupFn}
-    />
+    <GeoJSON key={`th-${id}-${data.features.length}`} data={data}
+      style={styleFn} onEachFeature={popupFn} />
   );
 }
 
-// ── COMPOSANT PRINCIPAL ────────────────────────────────────────────────────────
+// ===== COMPOSANT PRINCIPAL =====
 export default function CarteV3({
-  geoData,
-  featRegion, featDep, featArr, featCommune,
-  visRegions, visDeps, visArrs, visCommunes,
-  visEtiquettes,
+  geoData, featRegion, featDep, featArr, featCommune,
+  visRegions, visDeps, visArrs, visCommunes, visEtiquettes,
   geojsonThematiques, couchesActives, catalogue,
   importData, chargement,
   selRegion, selDep, selArr, selCommune,
   onRegionClick, onDepClick, onCommuneClick,
-  couleurCommune,
-  mapRef,
+  couleurCommune, mapRef,
+  isMobile, onOpenDrawerGauche, onOpenDrawerDroit,
 }) {
   const [coords, setCoords] = useState(null);
   const [zoom,   setZoom]   = useState(7);
@@ -299,32 +230,31 @@ export default function CarteV3({
   const [outils, setOutils] = useState(false);
 
   const zoomTarget = featCommune || featArr || featDep || featRegion;
-  const fondConf   = FONDS.find(f => f.id === fond) || FONDS[0];
+  const fondConf   = FONDS.find(f=>f.id===fond)||FONDS[0];
 
-  // Style des polygones admin avec couleur personnalisable pour commune
   const getStyleCommune = useCallback((couleur) => ({
-    selectionne: { color: couleur, weight:3.5, fillColor: couleur, fillOpacity:0.60 },
-    base:        { color:'#e74c3c', weight:1,   fillColor:'#fadbd8', fillOpacity:0.15 },
-    attenue:     { color:'#e74c3c', weight:1,   fillColor:'#fadbd8', fillOpacity:0.04, opacity:0.2 },
+    selectionne: { color:couleur, weight:3.5, fillColor:couleur, fillOpacity:0.60 },
+    base:        { color:'#e74c3c', weight:1, fillColor:'#fadbd8', fillOpacity:0.15 },
+    attenue:     { color:'#e74c3c', weight:1, fillColor:'#fadbd8', fillOpacity:0.04, opacity:0.2 },
   }), []);
 
   const styleF = useCallback((niveau, selPcode) => (feature) => {
     const base = { ...STYLES_BASE[niveau] };
-    if (niveau === 'communes' && selPcode) {
+    if (niveau==='communes' && selPcode) {
       const s = getStyleCommune(couleurCommune);
-      return feature.properties._pcode === selPcode ? s.selectionne : s.attenue;
+      return feature.properties._pcode===selPcode ? s.selectionne : s.attenue;
     }
     if (!selPcode) return base;
     const sel = STYLES_SEL_BASE[niveau];
-    return feature.properties._pcode === selPcode
-      ? { ...sel }
-      : { ...base, fillOpacity:0.04, opacity:0.2 };
+    return feature.properties._pcode===selPcode
+      ? {...sel}
+      : {...base, fillOpacity:0.04, opacity:0.2};
   }, [couleurCommune, getStyleCommune]);
 
   const onEachRegion = useCallback((feature, layer) => {
     layer.on('click',     () => onRegionClick?.(feature.properties._pcode));
-    layer.on('mouseover', () => { if (feature.properties._pcode !== selRegion) layer.setStyle({weight:2.5, fillOpacity:0.5}); });
-    layer.on('mouseout',  () => layer.setStyle(styleF('regions', selRegion)(feature)));
+    layer.on('mouseover', () => { if (feature.properties._pcode!==selRegion) layer.setStyle({weight:2.5,fillOpacity:0.5}); });
+    layer.on('mouseout',  () => layer.setStyle(styleF('regions',selRegion)(feature)));
   }, [selRegion, onRegionClick, styleF]);
 
   const onEachDep = useCallback((feature, layer) => {
@@ -333,156 +263,105 @@ export default function CarteV3({
 
   const onEachCommune = useCallback((feature, layer) => {
     layer.on('click',     () => onCommuneClick?.(feature.properties._pcode));
-    layer.on('mouseover', () => layer.setStyle({weight:2.5, fillOpacity:0.55}));
-    layer.on('mouseout',  () => layer.setStyle(styleF('communes', selCommune)(feature)));
+    layer.on('mouseover', () => layer.setStyle({weight:2.5,fillOpacity:0.55}));
+    layer.on('mouseout',  () => layer.setStyle(styleF('communes',selCommune)(feature)));
   }, [selCommune, onCommuneClick, styleF]);
 
-  // Localites en cache pour l'etiquette (hors couchesActives)
   const localitesData = geojsonThematiques['localites'];
 
   return (
     <div className="carte-wrapper" ref={mapRef} style={{position:'relative'}}>
-      {chargement && <div className="carte-spinner">⏳ Chargement des données…</div>}
+      {chargement && <div className="carte-spinner">⏳ Chargement…</div>}
 
-      {/* Bouton outils */}
-      <button
-        onClick={() => setOutils(!outils)}
-        style={{
-          position:'absolute', top:10, right:10, zIndex:1001,
-          background: outils ? '#1a5276' : 'white',
-          color:      outils ? 'white'   : '#1a3a5c',
-          border:'1.5px solid #cdd9e0', borderRadius:7,
-          padding:'5px 12px', cursor:'pointer', fontSize:'0.78rem', fontWeight:700,
-          boxShadow:'0 2px 8px rgba(0,0,0,0.13)',
-        }}>
-        🛠 Outils
-      </button>
+      {/* Bouton outils (desktop) */}
+      {!isMobile && (
+        <button onClick={()=>setOutils(!outils)}
+          style={{position:'absolute',top:10,right:10,zIndex:1001,
+            background:outils?'#1a5276':'white',
+            color:outils?'white':'#1a3a5c',
+            border:'1.5px solid #cdd9e0',borderRadius:7,
+            padding:'5px 12px',cursor:'pointer',fontSize:'0.78rem',fontWeight:700,
+            boxShadow:'0 2px 8px rgba(0,0,0,0.13)'}}>
+          🛠 Outils
+        </button>
+      )}
 
-      <MapContainer
-        center={[14.4, -14.4]} zoom={7}
-        style={{height:'100%', width:'100%'}}
-        zoomControl={true}
-        doubleClickZoom={false}
-      >
-        {fondConf.url && (
-          <TileLayer key={fond} url={fondConf.url} attribution={fondConf.attr} opacity={0.5} />
-        )}
+      {/* Boutons flottants mobile */}
+      {isMobile && (
+        <div className="mobile-fab-bar">
+          <button className="mobile-fab" onClick={onOpenDrawerGauche} title="Navigation">
+            🗺️
+          </button>
+          <button className="mobile-fab" onClick={()=>setOutils(!outils)} title="Outils">
+            🛠
+          </button>
+          <button className="mobile-fab" onClick={onOpenDrawerDroit} title="Couches">
+            🗹
+          </button>
+        </div>
+      )}
 
+      <MapContainer center={[14.4,-14.4]} zoom={7}
+        style={{height:'100%',width:'100%'}} zoomControl={true} doubleClickZoom={false}>
+        {fondConf.url && <TileLayer key={fond} url={fondConf.url} attribution={fondConf.attr} opacity={0.5} />}
         <AutoZoom feature={zoomTarget} />
         <CoordsBar onCoords={setCoords} onZoom={setZoom} />
 
-        {/* ── Couches admin polygones ── */}
+        {/* Couches admin */}
         {visRegions && geoData.regions && (
-          <GeoJSON
-            key={`reg-${selRegion}-${geoData.regions.features.length}`}
-            data={geoData.regions}
-            style={styleF('regions', selRegion)}
-            onEachFeature={onEachRegion}
-          />
+          <GeoJSON key={`reg-${selRegion}-${geoData.regions.features.length}`}
+            data={geoData.regions} style={styleF('regions',selRegion)} onEachFeature={onEachRegion} />
         )}
         {visDeps && geoData.departements && (
-          <GeoJSON
-            key={`dep-${selDep}-${geoData.departements.features.length}`}
-            data={geoData.departements}
-            style={styleF('departements', selDep)}
-            onEachFeature={onEachDep}
-          />
+          <GeoJSON key={`dep-${selDep}-${geoData.departements.features.length}`}
+            data={geoData.departements} style={styleF('departements',selDep)} onEachFeature={onEachDep} />
         )}
         {visArrs && geoData.arrondissements && (
-          <GeoJSON
-            key={`arr-${selArr}-${geoData.arrondissements.features.length}`}
-            data={geoData.arrondissements}
-            style={styleF('arrondissements', selArr)}
-          />
+          <GeoJSON key={`arr-${selArr}-${geoData.arrondissements.features.length}`}
+            data={geoData.arrondissements} style={styleF('arrondissements',selArr)} />
         )}
         {visCommunes && geoData.communes && (
-          <GeoJSON
-            key={`com-${selCommune}-${couleurCommune}-${geoData.communes.features.length}`}
-            data={geoData.communes}
-            style={styleF('communes', selCommune)}
-            onEachFeature={onEachCommune}
-          />
+          <GeoJSON key={`com-${selCommune}-${couleurCommune}-${geoData.communes.features.length}`}
+            data={geoData.communes} style={styleF('communes',selCommune)} onEachFeature={onEachCommune} />
         )}
 
-        {/* ── Etiquettes admin ── */}
-        <EtiquetteLayer
-          data={geoData.regions} niveau="regions" cssClass="leaflet-label-region"
-          visible={visEtiquettes.regions} zoom={zoom}
-        />
-        <EtiquetteLayer
-          data={geoData.departements} niveau="departements" cssClass="leaflet-label-dept"
-          visible={visEtiquettes.departements} zoom={zoom}
-        />
-        <EtiquetteLayer
-          data={geoData.arrondissements} niveau="arrondissements" cssClass="leaflet-label-arr"
-          visible={visEtiquettes.arrondissements} zoom={zoom}
-        />
-        <EtiquetteLayer
-          data={geoData.communes} niveau="communes" cssClass="leaflet-label-commune"
-          visible={visEtiquettes.communes} zoom={zoom}
-        />
+        {/* Etiquettes admin */}
+        <EtiquetteLayer data={geoData.regions}         niveau="regions"         cssClass="leaflet-label-region"  visible={visEtiquettes.regions}         zoom={zoom} />
+        <EtiquetteLayer data={geoData.departements}    niveau="departements"    cssClass="leaflet-label-dept"    visible={visEtiquettes.departements}    zoom={zoom} />
+        <EtiquetteLayer data={geoData.arrondissements} niveau="arrondissements" cssClass="leaflet-label-arr"     visible={visEtiquettes.arrondissements} zoom={zoom} />
+        <EtiquetteLayer data={geoData.communes}        niveau="communes"        cssClass="leaflet-label-commune" visible={visEtiquettes.communes}        zoom={zoom} />
 
-        {/* ── Localites: points + etiquettes independants des couchesActives ── */}
-        {/* Les localites s'affichent TOUJOURS si l'on est zoom >= 9 ET couche active */}
+        {/* Localites points + etiquettes */}
         {couchesActives.includes('localites') && localitesData?.features?.length > 0 && (
-          <GeoJSON
-            key={`th-localites-pts-${localitesData.features.length}`}
-            data={localitesData}
-            pointToLayer={(f, latlng) => L.circleMarker(latlng, {
-              radius:      2.5,
-              color:       '#c0392b',
-              weight:      0.8,
-              fillColor:   '#c0392b',
-              fillOpacity: 0.75,
-              opacity:     0.9,
+          <GeoJSON key={`th-localites-pts-${localitesData.features.length}`} data={localitesData}
+            pointToLayer={(f,latlng) => L.circleMarker(latlng, {
+              radius:2.5, color:'#c0392b', weight:0.8,
+              fillColor:'#c0392b', fillOpacity:0.75, opacity:0.9,
             })}
-            onEachFeature={(f, layer) => {
-              const nom = f.properties._nom || f.properties.NOM || f.properties.NAME || '';
+            onEachFeature={(f,layer) => {
+              const nom = f.properties._nom||f.properties.NOM||f.properties.NAME||'';
               if (nom) layer.bindPopup(`<b>${nom}</b>`);
             }}
           />
         )}
-
-        {/* Etiquettes localites: Arial 6 noir, zoom >= 9 */}
         {couchesActives.includes('localites') && (
-          <EtiquettesLocalites
-            data={localitesData}
-            visible={visEtiquettes.localites}
-            zoom={zoom}
-          />
+          <EtiquettesLocalites data={localitesData} visible={visEtiquettes.localites} zoom={zoom} />
         )}
 
-        {/* ── Autres couches thematiques (hors localites geree ci-dessus) ── */}
-        {couchesActives
-          .filter(id => id !== 'localites')
-          .map(id => {
-            const data    = geojsonThematiques[id];
-            const catItem = catalogue.find(c => c.id === id);
-            const couleur = catItem?.couleur || '#666';
-            return (
-              <CoucheThematique
-                key={`th-${id}`}
-                id={id}
-                data={data}
-                couleur={couleur}
-                zoom={zoom}
-              />
-            );
-          })
-        }
+        {/* Couches thematiques */}
+        {couchesActives.filter(id=>id!=='localites').map(id => {
+          const catItem = catalogue.find(c=>c.id===id);
+          return <CoucheThematique key={`th-${id}`} id={id}
+            data={geojsonThematiques[id]} couleur={catItem?.couleur||'#666'} />;
+        })}
 
-        {/* ── Import ── */}
+        {/* Import */}
         {importData && (
-          <GeoJSON
-            key={`imp-${importData.features?.length}`}
-            data={importData}
-            style={() => ({ color:'#8e44ad', weight:2, fillColor:'#9b59b6', fillOpacity:0.5 })}
-            onEachFeature={(f, layer) => {
-              const l = Object.entries(f.properties || {})
-                .filter(([k, v]) => v)
-                .slice(0, 8)
-                .map(([k, v]) => `<b>${k}</b>: ${v}`)
-                .join('<br/>');
+          <GeoJSON key={`imp-${importData.features?.length}`} data={importData}
+            style={()=>({color:'#8e44ad',weight:2,fillColor:'#9b59b6',fillOpacity:0.5})}
+            onEachFeature={(f,layer)=>{
+              const l=Object.entries(f.properties||{}).filter(([k,v])=>v).slice(0,8)
+                .map(([k,v])=>`<b>${k}</b>: ${v}`).join('<br/>');
               layer.bindPopup(`<div style="font-size:0.8rem">${l}</div>`);
             }}
           />
@@ -495,8 +374,8 @@ export default function CarteV3({
 
       {coords && (
         <div className="coords-bar">
-          <span>📍 Lat: {coords.lat.toFixed(5)}   Lng: {coords.lng.toFixed(5)}</span>
-          <span>WGS 84 | Zoom: {zoom}</span>
+          <span>📍 {coords.lat.toFixed(5)} | {coords.lng.toFixed(5)}</span>
+          <span>Zoom {zoom}</span>
         </div>
       )}
     </div>
