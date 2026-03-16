@@ -5,6 +5,7 @@ import PanneauGauche from './components/PanneauGauche';
 import GestionnaireCouches from './components/GestionnaireCouches';
 import Header from './components/Header';
 import ExportCarteModal from './components/ExportCarteModal';
+import UpdateBanner from './components/UpdateBanner';
 import './App.css';
 
 const API = process.env.REACT_APP_API_URL || 'https://carto-facilesn.onrender.com';
@@ -25,7 +26,6 @@ const CATALOGUE = [
   { groupe:'Frontières',  id:'frontieres',       label:'Frontières',        couleur:'#8e44ad', icon:'🗺️' },
 ];
 
-// Hook responsive
 function useIsMobile(breakpoint = 900) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < breakpoint);
   useEffect(() => {
@@ -155,7 +155,6 @@ export default function App() {
     e.target.value = '';
   }, []);
 
-  // Fermer drawers quand on change de taille
   useEffect(() => {
     if (!isMobile) { setDrawerGauche(false); setDrawerDroit(false); }
   }, [isMobile]);
@@ -171,7 +170,7 @@ export default function App() {
         <div className="banniere-erreur">
           {erreur}
           {erreur.includes('introuvable') && (
-            <span style={{marginLeft:8, fontSize:'0.75rem'}}>
+            <span style={{marginLeft:8,fontSize:'0.75rem'}}>
               → <a href="https://dashboard.render.com" target="_blank" rel="noreferrer"
                 style={{color:'#c0392b',fontWeight:700}}>Render dashboard</a>
             </span>
@@ -180,16 +179,11 @@ export default function App() {
       )}
 
       <div className="main-layout">
-
-        {/* Overlay mobile pour fermer les drawers */}
         {isMobile && (drawerGauche || drawerDroit) && (
-          <div
-            className="drawer-overlay"
-            onClick={() => { setDrawerGauche(false); setDrawerDroit(false); }}
-          />
+          <div className="drawer-overlay"
+            onClick={() => { setDrawerGauche(false); setDrawerDroit(false); }} />
         )}
 
-        {/* Panneau gauche — drawer sur mobile */}
         <div className={`panneau-gauche${isMobile ? (drawerGauche ? ' drawer-open' : ' drawer-hidden') : ''}`}>
           <PanneauGauche
             regions={regions}               departements={departements}
@@ -220,7 +214,6 @@ export default function App() {
         <input ref={inputImportRef} type="file" accept=".geojson,.json,.csv"
           style={{display:'none'}} onChange={handleImportFile} />
 
-        {/* Carte */}
         <CarteV3
           geoData={geoData}
           featRegion={featRegion}  featDep={featDep}
@@ -245,7 +238,6 @@ export default function App() {
           onOpenDrawerDroit={() => setDrawerDroit(true)}
         />
 
-        {/* Panneau droit — drawer sur mobile */}
         <div className={`panneau-droit-wrap${isMobile ? (drawerDroit ? ' drawer-open' : ' drawer-hidden') : ''}`}>
           <GestionnaireCouches
             catalogue={CATALOGUE}
@@ -257,7 +249,6 @@ export default function App() {
             onClose={() => setDrawerDroit(false)}
           />
         </div>
-
       </div>
 
       {showExport && (
@@ -271,6 +262,16 @@ export default function App() {
           sousTitre={featRegion ? `Région de ${featRegion.properties._nom}` : ''}
         />
       )}
+
+      {/* Banniere mise a jour automatique */}
+      <UpdateBanner />
+
+      <style>{`
+        @keyframes slideUpBanner {
+          from { opacity:0; transform:translateX(-50%) translateY(20px); }
+          to   { opacity:1; transform:translateX(-50%) translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }

@@ -3,11 +3,39 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Anti-cache : force le navigateur a toujours verifier la version -->
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>Carto-facileSN</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   </head>
   <body>
     <noscript>Activez JavaScript pour utiliser cette application.</noscript>
     <div id="root"></div>
+    <script>
+      // Enregistrement du Service Worker de mise a jour
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js').then(function(reg) {
+            reg.addEventListener('updatefound', function() {
+              var newWorker = reg.installing;
+              newWorker.addEventListener('statechange', function() {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // Nouvelle version disponible -> notifier l'app React
+                  window.__swUpdateAvailable = true;
+                  window.dispatchEvent(new CustomEvent('swUpdateAvailable'));
+                }
+              });
+            });
+          });
+          // Forcer rechargement quand le nouveau SW prend le controle
+          var refreshing = false;
+          navigator.serviceWorker.addEventListener('controllerchange', function() {
+            if (!refreshing) { refreshing = true; window.location.reload(); }
+          });
+        });
+      }
+    </script>
   </body>
 </html>
