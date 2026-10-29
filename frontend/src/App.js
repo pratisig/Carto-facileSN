@@ -6,9 +6,8 @@ import GestionnaireCouches from './components/GestionnaireCouches';
 import Header from './components/Header';
 import ExportCarteModal from './components/ExportCarteModal';
 import UpdateBanner from './components/UpdateBanner';
+import API from './config';
 import './App.css';
-
-const API = process.env.REACT_APP_API_URL || 'https://carto-facilesn.onrender.com';
 
 const CATALOGUE = [
   { groupe:'Transport',   id:'routes',          label:'Réseau routier',    couleur:'#888888', icon:'🛣️' },

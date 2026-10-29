@@ -10,6 +10,7 @@
 import React, { useEffect, useCallback, useRef, useState } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
+import { construirePopup, ligneHtml, echapperHtml } from '../utils/html';
 
 const STYLES_BASE = {
   regions:         { color:'#7f8c8d', weight:2,   fillColor:'#bdc3c7', fillOpacity:0.35 },
@@ -106,7 +107,7 @@ function EtiquetteLayer({ data, cssClass, niveau, visible, zoom }) {
       onEachFeature={(feature, layer) => {
         const nom = feature.properties._nom || '';
         if (!nom) return;
-        layer.bindTooltip(nom, { permanent:true, direction:'center', className:cssClass, sticky:false });
+        layer.bindTooltip(echapperHtml(nom), { permanent:true, direction:'center', className:cssClass, sticky:false });
       }}
     />
   );
@@ -124,7 +125,7 @@ function EtiquettesLocalites({ data, visible, zoom }) {
       onEachFeature={(feature, layer) => {
         const nom = feature.properties._nom || feature.properties.NOM || feature.properties.NAME || '';
         if (!nom) return;
-        layer.bindTooltip(nom, { permanent:true, direction:'right', offset:[4,0], className:'leaflet-label-localite', sticky:false });
+        layer.bindTooltip(echapperHtml(nom), { permanent:true, direction:'right', offset:[4,0], className:'leaflet-label-localite', sticky:false });
       }}
     />
   );
@@ -493,8 +494,8 @@ function CoucheThematique({ id, data, couleur }) {
   const styleFn = () => ({ color:couleur, weight:isLine?1.6:1, fillColor:couleur, fillOpacity:isLine?0:0.35, opacity:0.85 });
   const popupFn = (f, layer) => {
     const lignes = Object.entries(f.properties||{}).filter(([k,v])=>v&&!k.startsWith('_'))
-      .slice(0,6).map(([k,v])=>`<b>${k}</b>: ${v}`).join('<br/>');
-    if (lignes) layer.bindPopup(`<div style="font-size:0.8rem;max-width:220px">${lignes}</div>`);
+      .slice(0,6).map(([k,v])=>ligneHtml(k,v));
+    if (lignes.length) layer.bindPopup(construirePopup(lignes));
   };
   if (isPoint) {
     return (
@@ -655,7 +656,7 @@ export default function CarteV3({
             })}
             onEachFeature={(f,layer) => {
               const nom = f.properties._nom||f.properties.NOM||f.properties.NAME||'';
-              if (nom) layer.bindPopup(`<b>${nom}</b>`);
+              if (nom) layer.bindPopup(construirePopup([`<b>${echapperHtml(nom)}</b>`]));
             }}
           />
         )}
@@ -676,8 +677,8 @@ export default function CarteV3({
             style={()=>({color:'#8e44ad',weight:2,fillColor:'#9b59b6',fillOpacity:0.5})}
             onEachFeature={(f,layer)=>{
               const l=Object.entries(f.properties||{}).filter(([k,v])=>v).slice(0,8)
-                .map(([k,v])=>`<b>${k}</b>: ${v}`).join('<br/>');
-              layer.bindPopup(`<div style="font-size:0.8rem">${l}</div>`);
+                .map(([k,v])=>ligneHtml(k,v));
+              if (l.length) layer.bindPopup(construirePopup(l));
             }}
           />
         )}

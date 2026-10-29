@@ -3,8 +3,7 @@
  * Si le backend ne renvoie pas _nom/_pcode, on cherche dans toutes les proprietes.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
-
-const API = process.env.REACT_APP_API_URL || 'https://carto-facilesn.onrender.com';
+import API from '../config';
 
 const MAX_RETRIES = 6;
 const RETRY_DELAY = 10000;
